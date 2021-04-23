@@ -1,5 +1,7 @@
 import numpy as np
 import ot
+import ot.lp
+from time import time as timer
 
 
 def directed_hausdorff_numpy(delta_a, N_u, N_v):
@@ -17,8 +19,8 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
 
 
-def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95, c_s=0.95, stop_rtol=1e-5,
-                          stop_atol=1e-8, max_iters=1e5):
+def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95, c_s=0.95, stop_rtol=1e-3,
+                          stop_atol=1e-4, max_iters=1e5):
     """
     Compute the structural similarity of an MDP graph as inspired by Wang et. al. paper:
         https://www.ijcai.org/Proceedings/2019/0511.pdf.
@@ -51,7 +53,11 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
 
     done = False
     iter = 0
+    # Can precompute expected rewards since loop invariant
+    expected_rewards = np.einsum('ij,ij->i', action_dists, reward_matrix) 
     while not done and iter < max_iters:
+        # TODO: some amount of parallelization
+        one_minus_S = 1 - S
         for u in states:
             for v in states[u + 1:]:
                 # Note: Could we just use the P matrix to know what the out_neighbors are for actions and states?
@@ -61,18 +67,21 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
                     for beta in N_v:
                         p_alpha = action_dists[alpha]
                         p_beta = action_dists[beta]
-                        d_rwd = abs(np.sum(reward_matrix[alpha] * p_alpha) - np.sum(reward_matrix[beta] * p_beta))
-                        emd = ot.emd2(p_alpha, p_beta, 1 - S)  # Note: can be >1 by small rounding error
-                        entry = 1 - one_minus_c_a * d_rwd - c_a * emd
+                        d_rwd = abs(expected_rewards[alpha] - expected_rewards[beta])
+                        # already float64 arrays, so just invoke cython binding directly
+                        _, d_emd, _, _, _ = ot.lp.emd_c(p_alpha, p_beta, one_minus_S, 1e5)
+                        entry = 1 - one_minus_c_a * d_rwd - c_a * d_emd
                         A[alpha, beta] = entry
                         A[beta, alpha] = entry  # have to keep track of whole matrix for directed hausdorff
 
+        one_minus_A = 1 - A
         for u in states:
             for v in states[u + 1:]:
                 if len(out_neighbors_S[u]) == 0 or len(out_neighbors_S[v]) == 0:
                     continue  # skip
-                haus = max(directed_hausdorff_numpy(1 - A, out_neighbors_S[u], out_neighbors_S[v]),
-                           directed_hausdorff_numpy(1 - A, out_neighbors_S[v], out_neighbors_S[u]))
+                haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[u], out_neighbors_S[v])
+                haus2 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[v], out_neighbors_S[u])
+                haus = max(haus1, haus2)
                 entry = c_s * (1 - haus)
                 S[u, v] = entry
                 S[v, u] = entry  # Note: might be unnecessary, just need upper triangle of matrix due to symmetry

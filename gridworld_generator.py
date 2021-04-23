@@ -6,6 +6,7 @@ Similar to Wang 2019, but:
 - obstacles are supported as well
 """
 import numpy as np
+from structural_similarity import structural_similarity
 
 
 # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
@@ -104,5 +105,10 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
 
 
 if __name__ == "__main__":
-    grid, success_prob = parse_gridworld('./gridworlds/sample1.txt')
+    #grid, success_prob = parse_gridworld('./gridworlds/sample1.txt')
+    success_prob = 0.9
+    grid = np.zeros((9, 9)).astype(int)
+    grid[4][4] = 2
     P, R, out_neighbors_s, out_neighbors_a = grid_to_graph(grid, success_prob)
+    sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
+
