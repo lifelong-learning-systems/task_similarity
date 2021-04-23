@@ -3,6 +3,9 @@ import ot
 import ot.lp
 from time import time as timer
 
+# lol, like 10x slower
+#from pyemd import emd as other_emd
+
 
 def directed_hausdorff_numpy(delta_a, N_u, N_v):
     """
@@ -16,7 +19,12 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     :param N_v: (list or np.array) Out neighbors (action nodes) of state node v.
     :return: (float) Directed Hausdorff distance.
     """
-    return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
+    #return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
+    # ensure they're already np arrays, then do min along axis 0, instead of swapping and min along axis 1
+    # since it's very small (at most 5 action neighbors), use python min/max instead of numpy
+    return max([min(x) for x in delta_a[N_u].T[N_v].T])
+
+
 
 
 def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95, c_s=0.95, stop_rtol=1e-3,
@@ -47,29 +55,39 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
     states = list(range(n_states))
 
     one_minus_c_a = 1 - c_a  # optimization
+    emd_maxiters = 1e5
 
     last_S = S.copy()
     last_A = A.copy()
 
-    done = False
-    iter = 0
     # Can precompute expected rewards since loop invariant
     expected_rewards = np.einsum('ij,ij->i', action_dists, reward_matrix) 
+    cached_reward_differences = np.zeros((len(expected_rewards), len(expected_rewards)))
+    for i in range(len(expected_rewards)):
+        for j in range(i + 1, len(expected_rewards)):
+            diff = abs(expected_rewards[i] - expected_rewards[j])
+            cached_reward_differences[i][j] = diff
+            cached_reward_differences[j][i] = diff
+    # Gotta figure out if we can precompute d_rwd and shit
+    #import pdb; pdb.set_trace()
+    done = False
+    iter = 0
     while not done and iter < max_iters:
         # TODO: some amount of parallelization
         one_minus_S = 1 - S
+
         for u in states:
             for v in states[u + 1:]:
                 # Note: Could we just use the P matrix to know what the out_neighbors are for actions and states?
-                N_u = out_neighbors_S[u]
-                N_v = out_neighbors_S[v]
-                for alpha in N_u:
-                    for beta in N_v:
-                        p_alpha = action_dists[alpha]
-                        p_beta = action_dists[beta]
-                        d_rwd = abs(expected_rewards[alpha] - expected_rewards[beta])
-                        # already float64 arrays, so just invoke cython binding directly
-                        _, d_emd, _, _, _ = ot.lp.emd_c(p_alpha, p_beta, one_minus_S, 1e5)
+                for alpha in out_neighbors_S[u]:
+                    for beta in out_neighbors_S[v]:
+                        d_rwd = cached_reward_differences[alpha, beta]
+
+                        x = action_dists[alpha]
+                        y = action_dists[beta]
+
+                        _, d_emd, _, _, _ = ot.lp.emd_c(x, y, one_minus_S, emd_maxiters)
+
                         entry = 1 - one_minus_c_a * d_rwd - c_a * d_emd
                         A[alpha, beta] = entry
                         A[beta, alpha] = entry  # have to keep track of whole matrix for directed hausdorff

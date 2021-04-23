@@ -46,7 +46,7 @@ def grid_to_graph(grid, success_prob=0.9):
     assert len(goal_states) >= 1, 'At least one goal state required'
     num_states = rows*cols
     out_neighbors_s = dict(zip(range(num_states), 
-                                [list() for i in range(num_states)]))
+                                [np.empty(shape=(0,), dtype=int) for i in range(num_states)]))
     out_neighbors_a = dict()
 
     a_node = 0
@@ -58,7 +58,7 @@ def grid_to_graph(grid, success_prob=0.9):
 
         for action in filtered_actions:
             # each action a state can do creates an action node
-            out_neighbors_s[s].append(a_node)
+            out_neighbors_s[s] = np.append(out_neighbors_s[s], (a_node))
             # action nodes initialized with zero transition prob to all other states
             out_neighbors_a[a_node] = np.zeros(num_states)
             # TODO: maybe add a random seed in txt file + noise on the probabilities?
@@ -72,7 +72,7 @@ def grid_to_graph(grid, success_prob=0.9):
             a_node += 1
     
     num_actions = a_node
-    P = np.array([arr for arr in out_neighbors_a.values()])
+    P = np.array([out_neighbors_a[i] for i in range(num_actions)])
     R = np.zeros((num_actions, num_states))
     for i in range(num_actions):
         for g in goal_states:
@@ -107,8 +107,7 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
 if __name__ == "__main__":
     #grid, success_prob = parse_gridworld('./gridworlds/sample1.txt')
     success_prob = 0.9
-    grid = np.zeros((9, 9)).astype(int)
-    grid[4][4] = 2
+    grid = np.zeros((7, 7)).astype(int)
+    grid[3][3] = 2
     P, R, out_neighbors_s, out_neighbors_a = grid_to_graph(grid, success_prob)
     sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
-
