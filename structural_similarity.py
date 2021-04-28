@@ -36,7 +36,7 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
     :param action_dists: (np.array) P(s' | s, a) for each action node in the MDP graph.
     :param reward_matrix: (np.array) r(s, a) for each action node in the MDP graph.
     :param out_neighbors_S: (dict) Dictionary mapping the state nodes to their corresponding action nodes.
-    :param c_a: (float) a constant in [0, 1] discounting the impact of the neighbors Nα and Nβ on the pair of state
+    :param c_a: (float) a constant in [0, 1] discounting the impact of the neighbors N_alpha and N_beta on the pair of state
         nodes (u, v). Typically set to 0.95.
     :param c_s: (float) parameter in [0, 1] to weight the importance of the reward similarity and the transition
         similarity. Typically set to 0.95.
@@ -56,6 +56,9 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
 
     one_minus_c_a = 1 - c_a  # optimization
     emd_maxiters = 1e5
+    #  1:1 2:1
+    #  1:2 2:2
+    #   eye(2n)
 
     last_S = S.copy()
     last_A = A.copy()
@@ -95,12 +98,18 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
         one_minus_A = 1 - A
         for u in states:
             for v in states[u + 1:]:
-                if len(out_neighbors_S[u]) == 0 or len(out_neighbors_S[v]) == 0:
-                    continue  # skip
-                haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[u], out_neighbors_S[v])
-                haus2 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[v], out_neighbors_S[u])
-                haus = max(haus1, haus2)
-                entry = c_s * (1 - haus)
+                # if len(out_neighbors_S[u]) == 0 or len(out_neighbors_S[v]) == 0:
+                #     continue  # skip
+                # TODO: figure out how to handle obstacle:goal comparison, and vice versa
+                if len(out_neighbors_S[u]) == 0 and len(out_neighbors_S[v]) == 0:
+                    entry = 1
+                elif len(out_neighbors_S[u]) == 0 or len(out_neighbors_S[v]) == 0:
+                    continue
+                else:
+                    haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[u], out_neighbors_S[v])
+                    haus2 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[v], out_neighbors_S[u])
+                    haus = max(haus1, haus2)
+                    entry = c_s * (1 - haus)
                 S[u, v] = entry
                 S[v, u] = entry  # Note: might be unnecessary, just need upper triangle of matrix due to symmetry
 

@@ -7,9 +7,44 @@ Similar to Wang 2019, but:
 """
 import numpy as np
 from structural_similarity import structural_similarity
+from scipy.linalg import block_diag
 
 import argparse
 
+# G = (P, R, out_s, out_a) tuple
+def append_graphs(G1, G2):
+    P1, R1, out_s1, out_a1 = G1
+    P2, R2, out_s2, out_a2 = G2
+    num_actions1, num_states1 = P1.shape
+    num_actions2, num_states2 = P2.shape
+
+    total_actions = num_actions1 + num_actions2
+    total_states = num_states1 + num_states2
+    P = block_diag(P1, P2)
+    R = block_diag(R1, R2)
+
+    out_s = dict()
+    for i in range(total_states):
+        if i < num_states1:
+            out_s[i] = out_s1[i].copy()
+        else:
+            out_s[i] = out_s2[i - num_states1] + num_actions1
+    out_a = dict()
+    for i in range(total_actions):
+        if i < num_actions1:
+            out_a[i] = out_a1[i].copy()
+        else:
+            out_a[i] = out_a2[i - num_actions1].copy()
+    return P, R, out_s, out_a
+
+
+# returns upper right of structural similarity computed on appended graphs
+def cross_similarity(G1, G2):
+    G = append_graphs(G1, G2)
+    S, A, num_iters, done = structural_similarity(G[0], G[1], G[2])
+    S_upper_right = S[0:G1[0].shape[1], G1[0].shape[1]:]
+    A_upper_right = A[0:G1[0].shape[0], G1[0].shape[0]:]
+    return S_upper_right, A_upper_right, num_iters, done
 
 # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
 def get_valid_adjacent(state, grid):
@@ -118,5 +153,9 @@ if __name__ == "__main__":
         file = args.file
     
     grid, success_prob = parse_gridworld(file)
-    P, R, out_neighbors_s, out_neighbors_a = grid_to_graph(grid, success_prob)
-    #sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
+    # grid = np.zeros((5, 1))
+    # grid[2] = 2
+    # success_prob = 0.9
+    G1 = grid_to_graph(grid, success_prob)
+    G2 = grid_to_graph(grid, success_prob)
+    S, A, num_iters, done = cross_similarity(G1, G2)
