@@ -111,7 +111,7 @@ if __name__ == "__main__":
     parser.add_argument('--file', help='gridworld file to read in')
     args = parser.parse_args()
 
-    file = 'gridworlds/experiment1.txt'
+    file = 'gridworlds/3x3_base.txt'
     if args.file is not None:
         file = args.file
     
