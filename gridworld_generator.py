@@ -8,6 +8,8 @@ Similar to Wang 2019, but:
 import numpy as np
 from structural_similarity import structural_similarity
 
+import argparse
+
 
 # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
 def get_valid_adjacent(state, grid):
@@ -105,9 +107,14 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
 
 
 if __name__ == "__main__":
-    #grid, success_prob = parse_gridworld('./gridworlds/sample1.txt')
-    success_prob = 0.9
-    grid = np.zeros((7, 7)).astype(int)
-    grid[3][3] = 2
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--file', help='gridworld file to read in')
+    args = parser.parse_args()
+
+    file = 'gridworlds/experiment1.txt'
+    if args.file is not None:
+        file = args.file
+    
+    grid, success_prob = parse_gridworld(file)
     P, R, out_neighbors_s, out_neighbors_a = grid_to_graph(grid, success_prob)
     sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
