@@ -39,14 +39,14 @@ def get_valid_adjacent(state, grid):
 
 
 def grid_to_graph(grid, success_prob=0.9):
-    rows, cols = grid.shape
+    height, width = grid.shape
     goal_states = []
-    for i in range(rows):
-        for j in range(cols):
+    for i in range(height):
+        for j in range(width):
             if grid[i][j] == 2:
-                goal_states.append(i*rows + j)
+                goal_states.append(i*width + j)
     assert len(goal_states) >= 1, 'At least one goal state required'
-    num_states = rows*cols
+    num_states = height * width
     out_neighbors_s = dict(zip(range(num_states), 
                                 [np.empty(shape=(0,), dtype=int) for i in range(num_states)]))
     out_neighbors_a = dict()
@@ -60,7 +60,7 @@ def grid_to_graph(grid, success_prob=0.9):
 
         for action in filtered_actions:
             # each action a state can do creates an action node
-            out_neighbors_s[s] = np.append(out_neighbors_s[s], (a_node))
+            out_neighbors_s[s] = np.append(out_neighbors_s[s], a_node)
             # action nodes initialized with zero transition prob to all other states
             out_neighbors_a[a_node] = np.zeros(num_states)
             # TODO: maybe add a random seed in txt file + noise on the probabilities?
@@ -91,15 +91,17 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
         lines = f.read().splitlines()
 
     success_prob = float(lines[0])
+    assert 0 <= success_prob and success_prob <= 1, 'Success prob must be between 0 and 1'
 
-    rows, cols = np.array(lines[1].split(' ')).astype(int)
-    grid = np.zeros((rows, cols)).astype(int)
-    assert rows == len(lines) - 2, 'Incorrect number of rows'
+    height, width = np.array(lines[1].split(' ')).astype(int)
+    assert height > 0 and width > 0, 'Must have positive height and width'
+    grid = np.zeros((height, width)).astype(int)
+    assert height == len(lines) - 2, 'Incorrect number of rows for specified height'
     # remove first 2 lines, which had success prob & dimensions
     lines = lines[2:]
     for i in range(len(lines)):
         line = lines[i]
-        assert cols == len(line), 'Incorrect number of cols'
+        assert width == len(line), 'Incorrect number of cols for specified width'
         for j, char in enumerate(line):
             assert char in valid_chars, 'Invalid character'
             grid[i][j] = int(char)
