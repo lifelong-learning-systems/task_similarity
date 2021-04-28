@@ -42,5 +42,10 @@ if __name__ == '__main__':
     print('Scatter points:')
     print('\t' + str(x))
     print('\t' + str(y))
+    print('Log slopes:')
+    log_y = np.log(y)
+    log_x = np.log(x)
+    log_slopes = [(log_y[i] - log_y[i-1])/(log_x[i] - log_x[i - 1]) for i in range(1, len(log_y))]
+    print('\t' + str(log_slopes))
     plt.loglog(x, y)
     plt.show()
