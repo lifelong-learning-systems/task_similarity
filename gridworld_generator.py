@@ -117,4 +117,4 @@ if __name__ == "__main__":
     
     grid, success_prob = parse_gridworld(file)
     P, R, out_neighbors_s, out_neighbors_a = grid_to_graph(grid, success_prob)
-    sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
+    #sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
