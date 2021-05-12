@@ -6,6 +6,7 @@ Similar to Wang 2019, but:
 - obstacles are supported as well
 """
 import numpy as np
+import ot
 from structural_similarity import structural_similarity
 from scipy.linalg import block_diag
 
@@ -148,14 +149,23 @@ if __name__ == "__main__":
     parser.add_argument('--file', help='gridworld file to read in')
     args = parser.parse_args()
 
-    file = 'gridworlds/3x3_base.txt'
-    if args.file is not None:
-        file = args.file
+    file1 = 'gridworlds/3x3_base.txt'
+    file2 = 'gridworlds/5x5_base.txt'
+    # if args.file is not None:
+    #     file = args.file
     
-    grid, success_prob = parse_gridworld(file)
+    grid, success_prob = parse_gridworld('gridworlds/3x1_line.txt')
+    grid2, success_prob2 = parse_gridworld('gridworlds/3x1_line.txt')
     # grid = np.zeros((5, 1))
     # grid[2] = 2
     # success_prob = 0.9
     G1 = grid_to_graph(grid, success_prob)
-    G2 = grid_to_graph(grid, success_prob)
+    P1, R1, out_s1, out_a1 = G1
+    G2 = grid_to_graph(grid2, success_prob2)
+    P2, R2, out_s2, out_a2 = G2
     S, A, num_iters, done = cross_similarity(G1, G2)
+    ns, nt = S.shape
+    a = np.array([1/ns for _ in range(ns)])
+    b = np.array([1/nt for _ in range(nt)])
+    emd_distance = ot.emd2(a, b, 1-S)
+    print(emd_distance)
