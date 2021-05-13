@@ -7,12 +7,27 @@ Similar to Wang 2019, but:
 """
 import numpy as np
 import ot
-from structural_similarity import structural_similarity
 from scipy.linalg import block_diag
+
+from tasksim import *
 
 import argparse
 
-#TODO: introduce isomorphism generators, to test for that stuff
+# TODO: introduce isomorphism generators, to test for that stuff
+# TODO: also see what happens for multiple goal states
+# TODO: use files instead of create_grid; also test out obstacles, etc. and maybe even non-grid world extensions??
+def create_grid(shape, obstacle_prob=0):
+    rows, cols = shape
+    grid = np.zeros(shape)
+    for i in range(rows):
+        for j in range(cols):
+            if rows//2 == i and cols//2 == j:
+                grid[i][j] = 2
+                continue
+            grid[i][j] = 0
+            if np.random.rand(1)[0] < obstacle_prob:
+                grid[i][j] = 1
+    return grid
 
 # G = (P, R, out_s, out_a) tuple
 def append_graphs(G1, G2):
@@ -42,7 +57,7 @@ def append_graphs(G1, G2):
 
 
 # returns upper right of structural similarity computed on appended graphs
-def cross_similarity(G1, G2, c_a=0.95, c_s=0.95):
+def cross_similarity(G1, G2, c_a, c_s):
     G = append_graphs(G1, G2)
     S, A, num_iters, done = structural_similarity(G[0], G[1], G[2], c_a=c_a, c_s=c_s)
     S_upper_right = S[0:G1[0].shape[1], G1[0].shape[1]:]
@@ -151,32 +166,51 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
     return grid, success_prob
 
 
-if __name__ == "__main__":
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--file', help='gridworld file to read in')
-    # args = parser.parse_args()
 
-    # file1 = 'gridworlds/3x3_base.txt'
-    # file2 = 'gridworlds/5x5_base.txt'
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--file1', help='gridworld file 1 to read in')
+    parser.add_argument('--file2', help='gridworld file 2 to read in')
+    args = parser.parse_args()
+
+    file1 = 'gridworlds/3x3_base.txt'
+    file2 = 'gridworlds/5x5_base.txt'
+
+    if args.file1:
+        file1 = args.file1
+    if args.file2:
+        file2 = args.file2
     
-    from performance import create_grid
     def final_emd(matrix):
         ns, nt = matrix.shape
         a = np.array([1/ns for _ in range(ns)])
         b = np.array([1/nt for _ in range(nt)])
         return ot.emd2(a, b, 1-matrix)
-    def compare_shapes(shape1, shape2, c_a=0.95, c_s=0.95):
-        success_prob = 0.9
-        grid = create_grid(shape1)
-        grid2 = create_grid(shape2)
-        G1 = grid_to_graph(grid, success_prob)
-        G2 = grid_to_graph(grid2, success_prob)
+    def compare_grids(grid1, success_prob1, grid2, success_prob2, c_a, c_s):
+        G1 = grid_to_graph(grid1, success_prob1)
+        G2 = grid_to_graph(grid2, success_prob2)
         S, A, num_iters, done = cross_similarity(G1, G2, c_a=c_a, c_s=c_s)
         return S, A, num_iters, done, final_emd(S), final_emd(A)
     
-    S, A, num_iters, done, emd_S, emd_A = compare_shapes((5, 5), (6, 6), c_a=0.5, c_s=0.995)
-    print(emd_S)
-    print(num_iters)
-    S, A, num_iters, done, emd_S, emd_A = compare_shapes((5, 7), (5, 7), c_a=0.5, c_s=0.995)
-    print(emd_S)
-    print(num_iters)
+    # helpers to use compare_Grids
+    def compare_shapes(shape1, shape2, c_a, c_s):
+        success_prob = 0.9
+        grid1 = create_grid(shape1, success_prob)
+        grid2 = create_grid(shape2, success_prob)
+        return compare_grids(grid1, success_prob1, grid2, success_prob2, c_a, c_s)
+    def compare_files(file1, file2, c_a, c_s):
+        grid1, success_prob1 = parse_gridworld(file1)
+        grid2, success_prob2 = parse_gridworld(file2)
+        return compare_grids(grid1, success_prob1, grid2, success_prob2, c_a, c_s)
+    
+    c_a = 0.5
+    c_s = 0.995
+    limit_s = compute_constant_limit(c_a=c_a, c_s=c_s)
+    # S, A, num_iters, done, emd_S, emd_A = compare_shapes((5, 5), (6, 6), c_a=0.5, c_s=0.995)
+    # print(emd_S)
+    # print(num_iters)
+    # S, A, num_iters, done, emd_S, emd_A = compare_shapes((5, 7), (5, 7), c_a=0.5, c_s=0.995)
+    # print(emd_S)
+    # print(num_iters)
+    S, A, num_iters, done, emd_s, emd_a = compare_files(file1, file2, c_a, c_s)
+    print(emd_s, normalize_final_score(emd_s, c_a, c_s))

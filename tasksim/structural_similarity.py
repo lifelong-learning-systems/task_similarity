@@ -3,9 +3,26 @@ import ot
 import ot.lp
 from time import time as timer
 
-# lol, like 10x slower
-#from pyemd import emd as other_emd
+# OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
+# I like having c_a as 0.5, since it evenly balances d_rwd and d_emd, then c_s around 0.99-0.999ish
+def compute_constant_limit(c_a=0.5, c_s=0.995):
+    # solving the following recurrence relations for a(n) and s(n):
+    # a(n+1) = 1 - c_a(1 - s(n))
+    # s(n+1) = c_s*a(n+1)
+    # ...
+    # a(n+1) = 1 - c_a(1 - c_s*a(n))
+    # s(n+1) = c_s*(1 - c_a(1 - s(n)))
+    A = c_s*c_a
+    B = c_s - c_s*c_a
+    #C = 1 - c_a
+    limit_s = B/(1 - A) # Also just...(c_s - c_s*c_a)/(1 - c_s*c_a) = (c_s - A)/(1 - A) = (A - c_s)/(A - 1)
+    #limit_a = C/(1 - A)
+    return 1 - limit_s
 
+def normalize_final_score(score, c_a, c_s):
+    limit = compute_constant_limit(c_a, c_s)
+    # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
+    return 1 - (1 - score)/(1 - limit)
 
 def directed_hausdorff_numpy(delta_a, N_u, N_v):
     """
@@ -27,7 +44,7 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
 
 
 
-def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95, c_s=0.95, stop_rtol=1e-3,
+def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.5, c_s=0.995, stop_rtol=1e-3,
                           stop_atol=1e-4, max_iters=1e5):
     """
     Compute the structural similarity of an MDP graph as inspired by Wang et. al. paper:
@@ -77,7 +94,6 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
     while not done and iter < max_iters:
         # TODO: some amount of parallelization
         one_minus_S = 1 - S
-
         for u in states:
             for v in states[u + 1:]:
                 # Note: Could we just use the P matrix to know what the out_neighbors are for actions and states?
@@ -90,6 +106,7 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
 
                         _, d_emd, _, _, _ = ot.lp.emd_c(x, y, one_minus_S, emd_maxiters)
 
+                        #import pdb; pdb.set_trace()
                         entry = 1 - one_minus_c_a * d_rwd - c_a * d_emd
                         A[alpha, beta] = entry
                         A[beta, alpha] = entry  # have to keep track of whole matrix for directed hausdorff
@@ -97,7 +114,8 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
         one_minus_A = 1 - A
         for u in states:
             for v in states[u + 1:]:
-                assert len(out_neighbors_S[u]) and len(out_neighbors_S[v])
+                if not len(out_neighbors_S[u]) or not len(out_neighbors_S[v]):
+                    continue
                 haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[u], out_neighbors_S[v])
                 haus2 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[v], out_neighbors_S[u])
                 haus = max(haus1, haus2)

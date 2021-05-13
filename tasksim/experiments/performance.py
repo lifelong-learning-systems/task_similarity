@@ -2,17 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import timeit
 
-from structural_similarity import structural_similarity
-from gridworld_generator import grid_to_graph, parse_gridworld
-
-
-
-# TODO: maybe generate obstacles with some percentage? For now, just zeros with center goal state
-def create_grid(shape, obstacle_percent=0):
-    rows, cols = shape
-    grid = np.zeros(shape)
-    grid[rows//2][cols//2] = 2
-    return grid
+from tasksim import *
 
 if __name__ == '__main__':
     prob = 0.9
@@ -21,7 +11,7 @@ if __name__ == '__main__':
     # have to go from at least a 2x2, since 1x1 with just goal state has zero actions...breaks things
     x = []
     y = []
-    for i in range(1, 11):
+    for i in range(1, 5):
         n = i + 1
         # speedup for later rounds
         if n > 5:
