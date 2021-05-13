@@ -1,35 +1,36 @@
+C_a: 0.5, C_s: 0.995:
 2x2:
-        Graph generation, average of 100: 1.137E-04
-        Structural similarity, average of 3: 1.978E-02
+	Graph generation, average of 100: 1.084E-04
+	Structural similarity, average of 3: 7.158E-03
 3x3:
-        Graph generation, average of 100: 3.321E-04
-        Structural similarity, average of 3: 2.857E-01
+	Graph generation, average of 100: 2.729E-04
+	Structural similarity, average of 3: 7.145E-02
 4x4:
-        Graph generation, average of 100: 6.306E-04
-        Structural similarity, average of 3: 1.558E+00
+	Graph generation, average of 100: 5.733E-04
+	Structural similarity, average of 3: 3.542E-01
 5x5:
-        Graph generation, average of 100: 1.030E-03
-        Structural similarity, average of 3: 4.912E+00
+	Graph generation, average of 100: 9.170E-04
+	Structural similarity, average of 3: 1.007E+00
 6x6:
-        Graph generation, average of 100: 1.530E-03
-        Structural similarity, average of 1: 1.132E+01
+	Graph generation, average of 100: 1.396E-03
+	Structural similarity, average of 1: 2.315E+00
 7x7:
-        Graph generation, average of 100: 2.114E-03
-        Structural similarity, average of 1: 2.294E+01
+	Graph generation, average of 100: 1.993E-03
+	Structural similarity, average of 1: 4.688E+00
 8x8:
-        Graph generation, average of 100: 2.694E-03
-        Structural similarity, average of 1: 4.202E+01
+	Graph generation, average of 100: 2.594E-03
+	Structural similarity, average of 1: 8.488E+00
 9x9:
-        Graph generation, average of 100: 3.549E-03
-        Structural similarity, average of 1: 7.175E+01
+	Graph generation, average of 100: 3.329E-03
+	Structural similarity, average of 1: 1.445E+01
 10x10:
-        Graph generation, average of 100: 4.476E-03
-        Structural similarity, average of 1: 1.208E+02
+	Graph generation, average of 100: 4.114E-03
+	Structural similarity, average of 1: 2.369E+01
 11x11:
-        Graph generation, average of 100: 6.335E-03
-        Structural similarity, average of 1: 1.842E+02
+	Graph generation, average of 100: 5.408E-03
+	Structural similarity, average of 1: 3.780E+01
 Scatter points:
-        [4, 9, 16, 25, 36, 49, 64, 81, 100, 121]
-        [0.01977814866666668, 0.28570334233333333, 1.557524669, 4.9124980486666665, 11.320926901, 22.936414748000004, 42.024759005, 71.74774130899999, 120.76597280500002, 184.159229229]
+	[4, 9, 16, 25, 36, 49, 64, 81, 100, 121]
+	[0.007157949333333284, 0.07145407333333331, 0.35423723366666676, 1.0071977286666667, 2.3150224250000004, 4.6880091870000005, 8.488468313999999, 14.449471185, 23.690509211, 37.795602880000004]
 Log slopes:
-        [3.292979135480273, 2.947523053847628, 2.5738695176575144, 2.2895547455830414, 2.290203523303677, 2.267381181148154, 2.270689604975464, 2.471030947227937, 2.2135421250627534]
+	[2.8372741973514155, 2.782432555363454, 2.3414532510427035, 2.2823615602626033, 2.288632909149158, 2.2230748508664786, 2.2581742832656477, 2.3463092028520767, 2.450516084361778]

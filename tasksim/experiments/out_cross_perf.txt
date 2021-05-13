@@ -1,0 +1,33 @@
+C_a: 0.5, C_s: 0.995:
+2x2:
+	Chace, average of 3: 1.400E-01
+	Append, average of 3: 3.532E-02
+	Optimized, average of 3: 1.990E-02
+3x3:
+	Chace, average of 3: 1.173E+00
+	Append, average of 3: 3.184E-01
+	Optimized, average of 3: 1.633E-01
+4x4:
+	Append, average of 1: 1.411E+00
+	Optimized, average of 1: 7.243E-01
+5x5:
+	Append, average of 1: 4.221E+00
+	Optimized, average of 1: 2.111E+00
+6x6:
+	Append, average of 1: 9.945E+00
+	Optimized, average of 1: 4.808E+00
+7x7:
+	Optimized, average of 1: 9.729E+00
+8x8:
+	Optimized, average of 1: 1.734E+01
+9x9:
+	Optimized, average of 1: 2.915E+01
+10x10:
+	Optimized, average of 1: 4.686E+01
+11x11:
+	Optimized, average of 1: 7.239E+01
+Scatter points:
+	[4, 9, 16, 25, 36, 49, 64, 81, 100, 121]
+	[0.019903866999999947, 0.16331884233333346, 0.7243392650000002, 2.1112852330000003, 4.807537655999997, 9.728892656000003, 17.342128814, 29.150527016999995, 46.857004487, 72.388684738]
+Log slopes:
+	[2.595525856038071, 2.588891775401445, 2.397094312620388, 2.256694623672197, 2.286448078288197, 2.1644297977503446, 2.2046224926788436, 2.2523974527899115, 2.28175780183225]

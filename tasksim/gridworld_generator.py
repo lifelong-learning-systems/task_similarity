@@ -11,7 +11,7 @@ from scipy.linalg import block_diag
 
 import tasksim
 import tasksim.structural_similarity as sim
-import tasksim.chace_structural_similarity as css
+import tasksim.chace_structural_similarity as chace_sim
 from tasksim import DEFAULT_CA, DEFAULT_CS
 
 import argparse
@@ -142,7 +142,15 @@ class MDPGraph:
 
 
     # returns upper right of structural similarity computed on appended graphs
-    def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
+    def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS, append=False, chace=False):
+        if chace:
+            return chace_sim.structural_similarity(self.P, other.P, self.R, other.R, self.out_s, other.out_s, c_a=c_a, c_s=c_s)
+        if append:
+            G = self.append(other)
+            S, A, num_iters, done = sim.structural_similarity(G.P, G.R, G.out_s, c_a=c_a, c_s=c_s)
+            S_upper_right = S[0:self.P.shape[1], self.P.shape[1]:]
+            A_upper_right = A[0:self.P.shape[0], self.P.shape[0]:]
+            return S_upper_right, A_upper_right, num_iters, done
         return sim.cross_structural_similarity(self.P, other.P, self.R, other.R, self.out_s, other.out_s, c_a=c_a, c_s=c_s)
 
     # using convention from POT
@@ -178,9 +186,8 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
             grid[i][j] = int(char)
     return grid, success_prob
 
-# TODO: introduce isomorphism generators, to test for that stuff
 # TODO: also see what happens for multiple goal states
-# TODO: use files instead of create_grid; also test out obstacles, etc. and maybe even non-grid world extensions??
+# TODO: non-grid world extensions??
 def create_grid(shape, obstacle_prob=0, random_state=np.random):
     rows, cols = shape
     grid = np.zeros(shape)
@@ -229,7 +236,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     file1 = 'gridworlds/3x3_base.txt'
-    file2 = 'gridworlds/4x4_base.txt'
+    file2 = 'gridworlds/5x5_base.txt'
 
     if args.file1:
         file1 = args.file1
@@ -250,6 +257,10 @@ if __name__ == "__main__":
     c_a = 0.5
 
     time1 = time.time()
-    S3, A3, num_iters3, done3 = G1.compare(G2, c_a, c_s)
-    print(time.time() - time1)
+    S, A, num_iters, done = G1.compare(G2, c_a, c_s)
+    print('Time:', time.time() - time1)
+    score = sim.final_score(S)
+    norm_score = sim.normalize_score(score)
+    print('Score:', score) 
+    print('Normalized:', norm_score)
 
