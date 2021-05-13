@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # have to go from at least a 2x2, since 1x1 with just goal state has zero actions...breaks things
     x = []
     y = []
-    for i in range(1, 5):
+    for i in range(1, 11):
         n = i + 1
         # speedup for later rounds
         if n > 5:
