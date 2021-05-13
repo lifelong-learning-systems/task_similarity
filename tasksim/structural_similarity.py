@@ -3,9 +3,13 @@ import ot
 import ot.lp
 from time import time as timer
 
+
+DEFAULT_CA = 0.5
+DEFAULT_CS = 0.995
+
 # OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
 # I like having c_a as 0.5, since it evenly balances d_rwd and d_emd, then c_s around 0.99-0.999ish
-def compute_constant_limit(c_a=0.5, c_s=0.995):
+def compute_constant_limit(c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # solving the following recurrence relations for a(n) and s(n):
     # a(n+1) = 1 - c_a(1 - s(n))
     # s(n+1) = c_s*a(n+1)
@@ -19,7 +23,15 @@ def compute_constant_limit(c_a=0.5, c_s=0.995):
     #limit_a = C/(1 - A)
     return 1 - limit_s
 
-def normalize_final_score(score, c_a, c_s):
+def final_score(S):
+    if isinstance(S, tuple):
+        S = S[0]
+    ns, nt = S.shape
+    a = np.array([1/ns for _ in range(ns)])
+    b = np.array([1/nt for _ in range(nt)])
+    return ot.emd2(a, b, 1-S)
+
+def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     limit = compute_constant_limit(c_a, c_s)
     # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
     return 1 - (1 - score)/(1 - limit)
@@ -42,9 +54,7 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     return max([min(x) for x in delta_a[N_u].T[N_v].T])
 
 
-
-
-def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.5, c_s=0.995, stop_rtol=1e-3,
+def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                           stop_atol=1e-4, max_iters=1e5):
     """
     Compute the structural similarity of an MDP graph as inspired by Wang et. al. paper:

@@ -11,18 +11,19 @@ if __name__ == '__main__':
     # have to go from at least a 2x2, since 1x1 with just goal state has zero actions...breaks things
     x = []
     y = []
-    for i in range(1, 5):
+    for i in range(1, 11):
         n = i + 1
         # speedup for later rounds
         if n > 5:
             similarity_repetitions = 1
         grid = create_grid((n, n))
-        graph_gen_time = timeit.timeit(lambda: grid_to_graph(grid, prob),
+        graph_gen_time = timeit.timeit(lambda: MDPGraph.from_grid(grid, prob),
                                        number=graph_gen_repetitions)
         graph_avg = graph_gen_time / graph_gen_repetitions
         print(f'{n}x{n}:')
         print(f'\tGraph generation, average of {graph_gen_repetitions}: {graph_avg:.3E}')
-        P, R, out_s, out_a = grid_to_graph(grid, prob)
+        G = MDPGraph.from_grid(grid, prob)
+        P, R, out_s, out_a = G.P, G.R, G.out_s, G.out_a
         similarity_time = timeit.timeit(lambda: structural_similarity(P, R, out_s),
                                         number=similarity_repetitions)
         similarity_avg = similarity_time / similarity_repetitions
