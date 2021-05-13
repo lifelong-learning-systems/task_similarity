@@ -72,7 +72,6 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
             cached_reward_differences[i][j] = diff
             cached_reward_differences[j][i] = diff
     # Gotta figure out if we can precompute d_rwd and shit
-    #import pdb; pdb.set_trace()
     done = False
     iter = 0
     while not done and iter < max_iters:
@@ -98,18 +97,11 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=0.95
         one_minus_A = 1 - A
         for u in states:
             for v in states[u + 1:]:
-                # if len(out_neighbors_S[u]) == 0 or len(out_neighbors_S[v]) == 0:
-                #     continue  # skip
-                # TODO: figure out how to handle obstacle:goal comparison, and vice versa
-                if len(out_neighbors_S[u]) == 0 and len(out_neighbors_S[v]) == 0:
-                    entry = 1
-                elif len(out_neighbors_S[u]) == 0 or len(out_neighbors_S[v]) == 0:
-                    continue
-                else:
-                    haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[u], out_neighbors_S[v])
-                    haus2 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[v], out_neighbors_S[u])
-                    haus = max(haus1, haus2)
-                    entry = c_s * (1 - haus)
+                assert len(out_neighbors_S[u]) and len(out_neighbors_S[v])
+                haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[u], out_neighbors_S[v])
+                haus2 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S[v], out_neighbors_S[u])
+                haus = max(haus1, haus2)
+                entry = c_s * (1 - haus)
                 S[u, v] = entry
                 S[v, u] = entry  # Note: might be unnecessary, just need upper triangle of matrix due to symmetry
 

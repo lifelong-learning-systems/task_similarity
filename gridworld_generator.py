@@ -12,6 +12,8 @@ from scipy.linalg import block_diag
 
 import argparse
 
+#TODO: introduce isomorphism generators, to test for that stuff
+
 # G = (P, R, out_s, out_a) tuple
 def append_graphs(G1, G2):
     P1, R1, out_s1, out_a1 = G1
@@ -40,9 +42,9 @@ def append_graphs(G1, G2):
 
 
 # returns upper right of structural similarity computed on appended graphs
-def cross_similarity(G1, G2):
+def cross_similarity(G1, G2, c_a=0.95, c_s=0.95):
     G = append_graphs(G1, G2)
-    S, A, num_iters, done = structural_similarity(G[0], G[1], G[2])
+    S, A, num_iters, done = structural_similarity(G[0], G[1], G[2], c_a=c_a, c_s=c_s)
     S_upper_right = S[0:G1[0].shape[1], G1[0].shape[1]:]
     A_upper_right = A[0:G1[0].shape[0], G1[0].shape[0]:]
     return S_upper_right, A_upper_right, num_iters, done
@@ -54,7 +56,9 @@ def get_valid_adjacent(state, grid):
     col = state - width*row
 
     moves = [None] * 5
-    # obstacles and goal states have no out neighbors
+    # no-op
+    moves[4] = state
+    # obstacles and goal states have no out neighbors (besides no-op)
     if grid[row][col] != 0:
         return moves
     # left
@@ -69,8 +73,6 @@ def get_valid_adjacent(state, grid):
     # down
     if row < height - 1 and grid[row + 1][col] != 1:
         moves[3] = state + width
-    # no-op
-    moves[4] = state
     return moves
 
 
@@ -91,8 +93,8 @@ def grid_to_graph(grid, success_prob=0.9):
     for s in range(num_states):
         actions = get_valid_adjacent(s, grid)
         filtered_actions = [a for a in actions if a is not None]
-        assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
-                'Invalid actions; must be either zero or at least 2 (action + no-op)'
+        # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
+        #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
 
         for action in filtered_actions:
             # each action a state can do creates an action node
@@ -101,12 +103,17 @@ def grid_to_graph(grid, success_prob=0.9):
             out_neighbors_a[a_node] = np.zeros(num_states)
             # TODO: maybe add a random seed in txt file + noise on the probabilities?
             # account for where the agent actually goes
-            fail_prob = (1 - success_prob) / (len(filtered_actions) - 1)
+            if len(filtered_actions) == 1:
+                success = 1
+                fail = 0
+            else:
+                success = success_prob
+                fail = (1 - success_prob) / (len(filtered_actions) - 1)
             for s_p in filtered_actions:
                 if s_p == action:
-                    out_neighbors_a[a_node][s_p] = success_prob
+                    out_neighbors_a[a_node][s_p] = success
                 else:
-                    out_neighbors_a[a_node][s_p] = fail_prob
+                    out_neighbors_a[a_node][s_p] = fail
             a_node += 1
     
     num_actions = a_node
@@ -145,27 +152,31 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--file', help='gridworld file to read in')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--file', help='gridworld file to read in')
+    # args = parser.parse_args()
 
-    file1 = 'gridworlds/3x3_base.txt'
-    file2 = 'gridworlds/5x5_base.txt'
-    # if args.file is not None:
-    #     file = args.file
+    # file1 = 'gridworlds/3x3_base.txt'
+    # file2 = 'gridworlds/5x5_base.txt'
     
-    grid, success_prob = parse_gridworld('gridworlds/3x1_line.txt')
-    grid2, success_prob2 = parse_gridworld('gridworlds/3x1_line.txt')
-    # grid = np.zeros((5, 1))
-    # grid[2] = 2
-    # success_prob = 0.9
-    G1 = grid_to_graph(grid, success_prob)
-    P1, R1, out_s1, out_a1 = G1
-    G2 = grid_to_graph(grid2, success_prob2)
-    P2, R2, out_s2, out_a2 = G2
-    S, A, num_iters, done = cross_similarity(G1, G2)
-    ns, nt = S.shape
-    a = np.array([1/ns for _ in range(ns)])
-    b = np.array([1/nt for _ in range(nt)])
-    emd_distance = ot.emd2(a, b, 1-S)
-    print(emd_distance)
+    from performance import create_grid
+    def final_emd(matrix):
+        ns, nt = matrix.shape
+        a = np.array([1/ns for _ in range(ns)])
+        b = np.array([1/nt for _ in range(nt)])
+        return ot.emd2(a, b, 1-matrix)
+    def compare_shapes(shape1, shape2, c_a=0.95, c_s=0.95):
+        success_prob = 0.9
+        grid = create_grid(shape1)
+        grid2 = create_grid(shape2)
+        G1 = grid_to_graph(grid, success_prob)
+        G2 = grid_to_graph(grid2, success_prob)
+        S, A, num_iters, done = cross_similarity(G1, G2, c_a=c_a, c_s=c_s)
+        return S, A, num_iters, done, final_emd(S), final_emd(A)
+    
+    S, A, num_iters, done, emd_S, emd_A = compare_shapes((5, 5), (6, 6), c_a=0.5, c_s=0.995)
+    print(emd_S)
+    print(num_iters)
+    S, A, num_iters, done, emd_S, emd_A = compare_shapes((5, 7), (5, 7), c_a=0.5, c_s=0.995)
+    print(emd_S)
+    print(num_iters)
