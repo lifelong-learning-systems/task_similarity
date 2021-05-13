@@ -1,6 +1,9 @@
 import numpy as np
 
-from tasksim import *
+import tasksim
+from tasksim import MDPGraph
+import tasksim.structural_similarity as sim
+import tasksim.gridworld_generator as gen
 
 if __name__ == '__main__':
     random_state = np.random.RandomState(seed=314159)
@@ -17,4 +20,4 @@ if __name__ == '__main__':
         return grids, graphs
     
     success_prob = 0.9
-    grids3, graphs3 = permute_single(create_grid((3, 3)), success_prob)
+    grids3, graphs3 = permute_single(gen.create_grid((3, 3)), success_prob)

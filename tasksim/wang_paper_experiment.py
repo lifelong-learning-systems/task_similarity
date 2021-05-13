@@ -3,9 +3,10 @@ Code to replicate the results from Wang paper (https://www.ijcai.org/Proceedings
 """
 
 import numpy as np
-from structural_similarity import structural_similarity
 from matplotlib import pyplot as plt
 import seaborn as sns
+
+import tasksim.structural_similarity as sim
 
 # grid: where goal state == 4
 # 6 7 8
@@ -89,7 +90,7 @@ if __name__ == "__main__":
     print(R)
 
     # compute structural similarity
-    sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
+    sigma_s, sigma_a, num_iters, done = sim.structural_similarity(P, R, out_neighbors_s, c_a=0.95, c_s=0.95)
 
     print("delta_S:")
     print(1 - sigma_s)
