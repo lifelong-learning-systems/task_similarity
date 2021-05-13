@@ -11,9 +11,11 @@ from scipy.linalg import block_diag
 
 import tasksim
 import tasksim.structural_similarity as sim
+import tasksim.chace_structural_similarity as css
 from tasksim import DEFAULT_CA, DEFAULT_CS
 
 import argparse
+import time
 
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
@@ -141,18 +143,15 @@ class MDPGraph:
 
     # returns upper right of structural similarity computed on appended graphs
     def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
-        G = self.append(other)
-        S, A, num_iters, done = sim.structural_similarity(G.P, G.R, G.out_s, c_a=c_a, c_s=c_s)
-        S_upper_right = S[0:self.P.shape[1], self.P.shape[1]:]
-        A_upper_right = A[0:self.P.shape[0], self.P.shape[0]:]
-        return S_upper_right, A_upper_right, num_iters, done
-    
+        return sim.cross_structural_similarity(self.P, other.P, self.R, other.R, self.out_s, other.out_s, c_a=c_a, c_s=c_s)
+
     # using convention from POT
     def compare2(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         return sim.final_score(self.compare(other, c_a, c_s))
     
     def compare2_norm(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         return sim.normalize_score(self.compare2(other, c_a, c_s), c_a, c_s)
+
 
 # parsing similar to Wang 2019, but
 # top down, left to right
@@ -217,7 +216,7 @@ def compare_files2_norm(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
 
 def compare_shapes(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return compare_graphs(MDPGraph.from_grid(create_grid(shape1), success_prob1), \
-                          MDPGraph.from_grid(create_grid(shape2), success_prob2))
+                          MDPGraph.from_grid(create_grid(shape2), success_prob2), c_a=c_a, c_s=c_s)
 def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return sim.final_score(compare_shapes(shape1, shape2, success_prob1, success_prob2, c_a, c_s))
 def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
@@ -237,9 +236,20 @@ if __name__ == "__main__":
     if args.file2:
         file2 = args.file2
     
-    S, A, num_iters, done = compare_files(file1, file2)
-    score = sim.final_score(S)
-    norm_score = sim.normalize_score(score)
-    print(score, norm_score)
+    # S, A, num_iters, done = compare_files(file1, file2)
+    # score = sim.final_score(S)
+    # norm_score = sim.normalize_score(score)
+    # print(score, norm_score)
     #assert score == compare_files2(file1, file2)
     #assert norm_score == compare_files2_norm(file1, file2)
+    import tasksim.chace_structural_similarity as css
+    G1 = MDPGraph.from_file(file1)
+    G2 = MDPGraph.from_file(file2)
+
+    c_s = 0.995
+    c_a = 0.5
+
+    time1 = time.time()
+    S3, A3, num_iters3, done3 = G1.compare(G2, c_a, c_s)
+    print(time.time() - time1)
+

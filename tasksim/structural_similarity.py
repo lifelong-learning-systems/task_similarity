@@ -145,6 +145,84 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFA
 
     return S, A, iter - 1, done  # return done to report that it converged (or didn't)
 
+def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
+                                out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
+                                stop_atol=1e-4, max_iters=1e5):
+    n_actions1, n_states1 = action_dists1.shape
+    n_actions2, n_states2 = action_dists2.shape
+
+    # Initialization SHOULDN'T matter that much...
+    # zeros means normalizing slightly overshoots (positive)
+    # ones means normalizing slightly undershoots (negative, weird)
+    S = np.zeros((n_states1, n_states2))
+    A = np.zeros((n_actions1, n_actions2))
+
+    states1 = list(range(n_states1))
+    states2 = list(range(n_states2))
+
+    one_minus_c_a = 1 - c_a  # optimization
+    emd_maxiters = 1e5
+    #  1:1 2:1
+    #  1:2 2:2
+    #   eye(2n)
+
+    last_S = S.copy()
+    last_A = A.copy()
+
+    # Can precompute expected rewards since loop invariant
+    expected_rewards1 = np.einsum('ij,ij->i', action_dists1, reward_matrix1) 
+    expected_rewards2 = np.einsum('ij,ij->i', action_dists2, reward_matrix2) 
+    cached_reward_differences = np.zeros((len(expected_rewards1), len(expected_rewards2)))
+    for i in range(len(expected_rewards1)):
+        for j in range(len(expected_rewards2)):
+            diff = abs(expected_rewards1[i] - expected_rewards2[j])
+            cached_reward_differences[i][j] = diff
+    # Gotta figure out if we can precompute d_rwd and shit
+    done = False
+    iter = 0
+    while not done and iter < max_iters:
+        # TODO: some amount of parallelization
+        one_minus_S = 1 - S
+        for u in states1:
+            for v in states2:
+                # Note: Could we just use the P matrix to know what the out_neighbors are for actions and states?
+                for alpha in out_neighbors_S1[u]:
+                    for beta in out_neighbors_S2[v]:
+                        d_rwd = cached_reward_differences[alpha, beta]
+
+                        x = action_dists1[alpha]
+                        y = action_dists2[beta]
+
+                        _, d_emd, _, _, _ = ot.lp.emd_c(x, y, one_minus_S, emd_maxiters)
+
+                        #import pdb; pdb.set_trace()
+                        entry = 1 - one_minus_c_a * d_rwd - c_a * d_emd
+                        A[alpha, beta] = entry
+
+        one_minus_A = 1 - A
+        one_minus_A_transpose = one_minus_A.T
+        for u in states1:
+            for v in states2:
+                if not len(out_neighbors_S1[u]) or not len(out_neighbors_S2[v]):
+                    continue
+                haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S1[u], out_neighbors_S2[v])
+                haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_neighbors_S2[v], out_neighbors_S1[u])
+                haus = max(haus1, haus2)
+                entry = c_s * (1 - haus)
+                S[u, v] = entry
+
+        if np.allclose(A, last_A, rtol=stop_rtol, atol=stop_atol) and np.allclose(S, last_S, rtol=stop_rtol,
+                                                                                  atol=stop_atol):
+            # Note: Could update this to use specified more specific convergence criteria
+            done = True
+        else:
+            last_S = S.copy()
+            last_A = A.copy()
+
+        iter += 1
+
+    return S, A, iter - 1, done  # return done to report that it converged (or didn't)
+
 
 if __name__ == "__main__":
     # Example based on the MDP described in Figure 1 of https://www.ijcai.org/Proceedings/2019/0511.pdf.
