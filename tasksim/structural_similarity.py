@@ -170,30 +170,35 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_S = S.copy()
     last_A = A.copy()
 
-
-    def norm(rewards, method):
+    # TODO: how to normalize rewards to support negative and positive? Normalize around what?
+    # Maybe: 
+    # - normalize reward matrix vs. expected rewards vs. differences?
+    # - minmax vs. mean 
+    # FOR NOW: just minmax scale the expected rewards? nah so sus, makes reward of 2 indistinguishable from reward of 100
+    # IN FACT: just do some amount of normalization on the COMBINED reward matrices...!!!! Yes?
+    def norm(mat1, mat2, method):
+        combined = np.concatenate([mat1.flatten(), mat2.flatten()])
         if method == 'l1' or method == 'l2':
-            return normalize([rewards.flatten()], norm=method).squeeze().reshape(rewards.shape)
+            combined = normalize([combined], norm=method).squeeze()
         if method == 'minmax':
-            return minmax_scale(rewards.flatten()).reshape(rewards.shape)
-        return rewards
+            combined = minmax_scale(combined)
+        ret1 = combined[:mat1.size].reshape(mat1.shape)
+        ret2 = combined[mat1.size:].reshape(mat2.shape)
+        return ret1, ret2
+
+    reward_matrix1, reward_matrix2 = norm(reward_matrix1, reward_matrix2, 'minmax')
+
+    # Can precompute expected rewards since loop invariant
+    expected_rewards1 = np.einsum('ij,ij->i', action_dists1, reward_matrix1) 
+    expected_rewards2 = np.einsum('ij,ij->i', action_dists2, reward_matrix2) 
     def compute_diff(list1, list2):
         diff = np.zeros((len(list1), len(list2)))
         for i in range(len(list1)):
             for j in range(len(list2)):
                 diff[i][j] = abs(list1[i] - list2[j])
         return diff
-
-    # Can precompute expected rewards since loop invariant
-    expected_rewards1 = np.einsum('ij,ij->i', action_dists1, reward_matrix1) 
-    expected_rewards2 = np.einsum('ij,ij->i', action_dists2, reward_matrix2) 
-    # TODO: how to normalize rewards to support negative and positive? Normalize around what?
-    # Maybe: 
-    # - normalize reward matrix vs. expected rewards vs. differences?
-    # - minmax vs. mean 
-    # FOR NOW: just minmax scale the expected rewards?
     cached_reward_differences = compute_diff(expected_rewards1, expected_rewards2)
-    cached_reward_differences = norm(cached_reward_differences, 'minmax')
+
     done = False
     iter = 0
     while not done and iter < max_iters:
