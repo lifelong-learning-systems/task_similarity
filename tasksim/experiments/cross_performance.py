@@ -25,7 +25,7 @@ if __name__ == '__main__':
         grid2 = create_grid((n, n))
         mdp1 = MDPGraph.from_grid(grid1, prob)
         mdp2 = MDPGraph.from_grid(grid2, prob)
-        print(f'{n}x{n}:')
+        print(f'MDP 1: {mdp1.P.shape[1]}, MDP 2: {mdp2.P.shape[1]}')
         if n <= 3:
             chace_time = timeit.timeit(lambda: mdp1.compare(mdp2, c_a=c_a, c_s=c_s, chace=True),
                                             number=similarity_repetitions)
@@ -41,7 +41,7 @@ if __name__ == '__main__':
         opt_avg = opt_time / similarity_repetitions
         print(f'\tOptimized, average of {similarity_repetitions}: {opt_avg:.3E}')
         # Already in (n + m)
-        x.append(n*n)
+        x.append(mdp1.P.shape[1] + mdp2.P.shape[1])
         y.append(opt_avg)
     print('Scatter points:')
     print('\t' + str(x))

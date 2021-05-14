@@ -2,6 +2,7 @@ import numpy as np
 import ot
 import ot.lp
 from time import time as timer
+from sklearn.preprocessing import normalize, minmax_scale
 
 
 DEFAULT_CA = 0.5
@@ -54,6 +55,7 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     return max([min(x) for x in delta_a[N_u].T[N_v].T])
 
 
+# TODO: combine common functionality between SS and CSS
 def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                           stop_atol=1e-4, max_iters=1e5):
     """
@@ -98,7 +100,6 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFA
             diff = abs(expected_rewards[i] - expected_rewards[j])
             cached_reward_differences[i][j] = diff
             cached_reward_differences[j][i] = diff
-    # Gotta figure out if we can precompute d_rwd and shit
     done = False
     iter = 0
     while not done and iter < max_iters:
@@ -169,15 +170,30 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_S = S.copy()
     last_A = A.copy()
 
+
+    def norm(rewards, method):
+        if method == 'l1' or method == 'l2':
+            return normalize([rewards.flatten()], norm=method).squeeze().reshape(rewards.shape)
+        if method == 'minmax':
+            return minmax_scale(rewards.flatten()).reshape(rewards.shape)
+        return rewards
+    def compute_diff(list1, list2):
+        diff = np.zeros((len(list1), len(list2)))
+        for i in range(len(list1)):
+            for j in range(len(list2)):
+                diff[i][j] = abs(list1[i] - list2[j])
+        return diff
+
     # Can precompute expected rewards since loop invariant
     expected_rewards1 = np.einsum('ij,ij->i', action_dists1, reward_matrix1) 
     expected_rewards2 = np.einsum('ij,ij->i', action_dists2, reward_matrix2) 
-    cached_reward_differences = np.zeros((len(expected_rewards1), len(expected_rewards2)))
-    for i in range(len(expected_rewards1)):
-        for j in range(len(expected_rewards2)):
-            diff = abs(expected_rewards1[i] - expected_rewards2[j])
-            cached_reward_differences[i][j] = diff
-    # Gotta figure out if we can precompute d_rwd and shit
+    # TODO: how to normalize rewards to support negative and positive? Normalize around what?
+    # Maybe: 
+    # - normalize reward matrix vs. expected rewards vs. differences?
+    # - minmax vs. mean 
+    # FOR NOW: just minmax scale the expected rewards?
+    cached_reward_differences = compute_diff(expected_rewards1, expected_rewards2)
+    cached_reward_differences = norm(cached_reward_differences, 'minmax')
     done = False
     iter = 0
     while not done and iter < max_iters:

@@ -8,6 +8,7 @@ Similar to Wang 2019, but:
 import numpy as np
 import ot
 from scipy.linalg import block_diag
+from sympy.utilities.iterables import multiset_permutations
 
 import tasksim
 import tasksim.structural_similarity as sim
@@ -27,13 +28,13 @@ class MDPGraph:
         self.out_a = out_a.copy()
 
     @classmethod
-    def from_file(cls, path):
+    def from_file(cls, path, reward=1):
         grid, success_prob = parse_gridworld(path=path)
-        return cls.from_grid(grid, success_prob)
+        return cls.from_grid(grid, success_prob, reward=reward)
 
     @classmethod
-    def from_grid(cls, grid, success_prob):
-        P, R, out_s, out_a = cls.grid_to_graph(grid, success_prob)
+    def from_grid(cls, grid, success_prob, reward=1):
+        P, R, out_s, out_a = cls.grid_to_graph(grid, success_prob, reward=reward)
         return cls(P, R, out_s, out_a)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
@@ -64,7 +65,7 @@ class MDPGraph:
         return moves
 
     @classmethod
-    def grid_to_graph(cls, grid, success_prob=0.9):
+    def grid_to_graph(cls, grid, success_prob=0.9, reward=1):
         height, width = grid.shape
         goal_states = []
         for i in range(height):
@@ -110,7 +111,7 @@ class MDPGraph:
         for i in range(num_actions):
             for g in goal_states:
                 if P[i, g] > 0:
-                    R[i, g] = 1.0
+                    R[i, g] = reward
         return P, R, out_neighbors_s, out_neighbors_a
 
 
@@ -188,13 +189,25 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
 
 # TODO: also see what happens for multiple goal states
 # TODO: non-grid world extensions??
-def create_grid(shape, obstacle_prob=0, random_state=np.random):
+# TODO: do rewards need to be normalized between [0, 1]?
+# Goal locations: list of tuples
+# Goal rewards: list of floats
+def create_grid(shape, goal_locations=None, obstacle_locations=None, obstacle_prob=0, random_state=np.random):
     rows, cols = shape
     grid = np.zeros(shape)
+    if not goal_locations:
+        goal_locations = [(rows//2, cols//2)]
+    assert len(goal_locations)
+    if not obstacle_locations:
+        obstacle_locations = []
     for i in range(rows):
         for j in range(cols):
-            if rows//2 == i and cols//2 == j:
+            loc = (i, j)
+            if (i, j) in goal_locations:
                 grid[i][j] = 2
+                continue
+            if (i, j) in obstacle_locations:
+                grid[i][j] = 1
                 continue
             grid[i][j] = 0
 
@@ -229,6 +242,43 @@ def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DE
 def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return sim.normalize_score(compare_shapes2(shape1, shape2, success_prob1, success_prob2, c_a, c_s), c_a, c_s)
 
+# between two grids
+def compare_grid_symmetry(a, b, done=False):
+    # Check flips
+    if np.array_equal(a, b):
+        return True
+    b = np.fliplr(b)
+    if np.array_equal(a, b):
+        return True
+    b = np.flipud(b)
+    if np.array_equal(a, b):
+        return True
+    b = np.fliplr(b)
+    if np.array_equal(a, b):
+        return True
+    b = np.flipud(b)
+    # Check rotations
+    if done:
+        return False
+    b = np.rot90(b)
+    return compare_grid_symmetry(a, b, done=True)
+
+def permute_grid(a, keep_isomorphisms=False):
+    multiset_perms = multiset_permutations(a.flatten())
+    if keep_isomorphisms:
+        return [np.array(b).reshape(a.shape) for b in multiset_perms]
+    filtered = []
+    for b in multiset_perms:
+        b = np.array(b).reshape(a.shape)
+        found = False
+        for f in filtered:
+            if compare_grid_symmetry(b, f):
+                found = True
+                break
+        if not found:
+            filtered.append(b)
+    return filtered
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--file1', help='gridworld file 1 to read in')
@@ -249,7 +299,6 @@ if __name__ == "__main__":
     # print(score, norm_score)
     #assert score == compare_files2(file1, file2)
     #assert norm_score == compare_files2_norm(file1, file2)
-    import tasksim.chace_structural_similarity as css
     G1 = MDPGraph.from_file(file1)
     G2 = MDPGraph.from_file(file2)
 

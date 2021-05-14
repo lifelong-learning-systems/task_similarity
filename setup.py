@@ -12,6 +12,8 @@ setup(
         'matplotlib',
         'numpy',
         'Cython',
-        'seaborn'
+        'seaborn',
+        'sklearn',
+        'sympy'
     ],
 )
