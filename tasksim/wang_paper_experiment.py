@@ -3,9 +3,10 @@ Code to replicate the results from Wang paper (https://www.ijcai.org/Proceedings
 """
 
 import numpy as np
-from structural_similarity import structural_similarity
 from matplotlib import pyplot as plt
 import seaborn as sns
+
+import tasksim.structural_similarity as sim
 
 # grid: where goal state == 4
 # 6 7 8
@@ -47,7 +48,7 @@ def move_allowed(grid_shape, state, action):
 
 if __name__ == "__main__":
     P = np.zeros((9, 4))
-    out_neighbors_s = dict(zip(range(9), [list() for i in range(9)]))
+    out_neighbors_s = dict(zip(range(9), [np.empty(shape=(0,), dtype=int) for i in range(9)]))
     out_neighbors_a = dict()
 
     a_node = 0
@@ -55,7 +56,7 @@ if __name__ == "__main__":
         for act in list(a_map.keys()):
             move_allow, s_prime = move_allowed((3, 3), s, act)
             if move_allow:  # add action node
-                out_neighbors_s[s].append(a_node)
+                out_neighbors_s[s] = np.append(out_neighbors_s[s], (a_node))
                 out_neighbors_a[a_node] = np.zeros(9)
                 for a_p in list(a_map.keys()):
                     if act == a_p:  # agent can go in the given direction
@@ -89,7 +90,7 @@ if __name__ == "__main__":
     print(R)
 
     # compute structural similarity
-    sigma_s, sigma_a, num_iters, done = structural_similarity(P, R, out_neighbors_s)
+    sigma_s, sigma_a, num_iters, done = sim.structural_similarity(P, R, out_neighbors_s, c_a=0.95, c_s=0.95)
 
     print("delta_S:")
     print(1 - sigma_s)
