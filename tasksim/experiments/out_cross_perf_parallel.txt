@@ -1,0 +1,35 @@
+TaskSim: Ray is not initialized; initializing now...
+TaskSim: Ray initialized with 8.0 CPUs
+C_a: 0.5, C_s: 0.995:
+MDP 1: 4, MDP 2: 4
+	Chace, average of 3: 1.708E-01
+	Append, average of 3: 3.848E-02
+	Optimized, average of 3: 3.597E-01
+MDP 1: 9, MDP 2: 9
+	Chace, average of 3: 1.467E+00
+	Append, average of 3: 4.162E-01
+	Optimized, average of 3: 2.116E-01
+MDP 1: 16, MDP 2: 16
+	Append, average of 1: 1.842E+00
+	Optimized, average of 1: 4.052E-01
+MDP 1: 25, MDP 2: 25
+	Append, average of 1: 4.956E+00
+	Optimized, average of 1: 7.528E-01
+MDP 1: 36, MDP 2: 36
+	Append, average of 1: 1.226E+01
+	Optimized, average of 1: 1.496E+00
+MDP 1: 49, MDP 2: 49
+	Optimized, average of 1: 2.751E+00
+MDP 1: 64, MDP 2: 64
+	Optimized, average of 1: 4.534E+00
+MDP 1: 81, MDP 2: 81
+	Optimized, average of 1: 6.952E+00
+MDP 1: 100, MDP 2: 100
+	Optimized, average of 1: 1.106E+01
+MDP 1: 121, MDP 2: 121
+	Optimized, average of 1: 1.721E+01
+Scatter points:
+	[8, 18, 32, 50, 72, 98, 128, 162, 200, 242]
+	[0.3597390926666666, 0.21164358466666697, 0.4051708719999976, 0.752815408, 1.495707779, 2.751413442999997, 4.533586790999998, 6.9515447670000015, 11.057350547999995, 17.21405356799999]
+Log slopes:
+	[-0.6541566216639121, 1.1286856064890982, 1.3881449132156591, 1.8827580264891883, 1.9770111750828274, 1.8699672173178556, 1.8145673052119247, 2.2025875080678596, 2.322053658077422]

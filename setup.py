@@ -14,6 +14,8 @@ setup(
         'Cython',
         'seaborn',
         'sklearn',
-        'sympy'
+        'sympy',
+        'ray',
+        'ray[default]'
     ],
 )
