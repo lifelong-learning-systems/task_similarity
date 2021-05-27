@@ -185,21 +185,26 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     @ray.remote
     def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S):
         n_a1, n_a2, _ = chunk.shape
-        entries = []
+        entries = [np.nan] * (n_a1 * n_a2)
+        init = False
+        if (one_minus_S == 1).all():
+            init = True
+        count = -1
         for i in range(n_a1):
             for j in range(n_a2):
+                count += 1
                 alpha, beta = chunk[i, j]
                 if np.isnan(alpha) or np.isnan(beta):
-                    entries.append(np.nan)
+                    entries[count] = np.nan
                     continue
                 alpha = int(alpha)
                 beta = int(beta)
                 d_rwd = reward_diffs[alpha, beta]
                 x = actions1[alpha]
                 y = actions2[beta]
-                _, d_emd, _, _, _ = ot.lp.emd_c(x, y, one_minus_S, emd_maxiters)
+                d_emd = ot.lp.emd_c(x, y, one_minus_S, emd_maxiters)[1] if not init else 1
                 entry = 1 - one_minus_c_a * d_rwd - c_a * d_emd
-                entries.append(entry)
+                entries[count] = entry
         return np.array(entries)
 
     while not done and iter < max_iters:
