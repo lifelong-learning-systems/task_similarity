@@ -45,6 +45,10 @@ def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
     return 1 - (1 - score)/(1 - limit)
 
+def truncate_score(score, num_decimal=3):
+    mul = 10**num_decimal
+    return np.trunc(score * mul)/(mul)
+
 def directed_hausdorff_numpy(delta_a, N_u, N_v):
     """
     Directed Hausdorff distance using a distance matrix and the out-neighbors of state nodes u and v. Note the the full
@@ -168,8 +172,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     actions1_id = ray.put(action_dists1)
     actions2_id = ray.put(action_dists2)
 
-    done = False
-    iter = 0
 
     if not self_similarity:
         action_pairs = np.array([(i, j) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))
@@ -207,9 +209,10 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
                 entries[count] = entry
         return np.array(entries)
 
+    done = False
+    iter = 0
     while not done and iter < max_iters:
         # TODO: some amount of parallelization
-        S_counts = np.zeros((n_states1, n_states2))
         one_minus_S = 1 - S
         one_minus_S_id = ray.put(one_minus_S)
 
@@ -239,7 +242,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
                 S[u, v] = entry
                 if self_similarity:
                     S[v, u] = entry
-                S_counts[u, v] += 1
 
         if np.allclose(A, last_A, rtol=stop_rtol, atol=stop_atol) and np.allclose(S, last_S, rtol=stop_rtol,
                                                                                   atol=stop_atol):
