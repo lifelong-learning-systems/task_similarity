@@ -6,7 +6,13 @@ from sklearn.preprocessing import normalize, minmax_scale
 from enum import Enum
 import ray
 
-from tasksim import NUM_CPU
+from tasksim import NUM_CPU, emd_c, emd_c_chunk
+import process_chunk as pc
+from numba import jit
+from numba.extending import get_cython_function_address
+import ctypes
+from ctypes import CFUNCTYPE, POINTER, c_double, c_int
+import numpy.ctypeslib as npct
 
 DEFAULT_CA = 0.5
 DEFAULT_CS = 0.995
@@ -67,6 +73,53 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     return max([min(x) for x in delta_a[N_u].T[N_v].T])
 
 
+
+#@jit(nopython=True)
+#@jit()
+def compute_a_py(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters):
+    n_a1 = chunk.shape[0]
+    n_a2 = chunk.shape[1]
+    count = -1
+    entries = np.ones(n_a1*n_a2) * -1
+    
+    W = one_minus_S.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    for i in range(n_a1):
+        for j in range(n_a2):
+            count += 1
+            if (chunk[i, j][0] < 0) or (chunk[i, j][1] < 0):
+                entries[count] = -1
+                continue
+            alpha = int(chunk[i, j][0])
+            beta = int(chunk[i, j][1])
+            d_rwd = reward_diffs[alpha, beta]
+            x = actions1[alpha, :]
+            y = actions2[beta, :]
+            d_emd = emd_c(x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                          y.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                          W, len(x), len(y), int(emd_maxiters))
+            entry = 1 - (1 - c_a) * d_rwd - c_a * d_emd
+            entries[count] = entry
+    return entries
+
+def compute_a_py_full(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters):
+    n_chunk1 = chunk.shape[0]
+    n_chunk2 = chunk.shape[1]
+    num_actions1, num_states1 = actions1.shape
+    num_actions2, num_states2 = actions2.shape
+    entries = np.zeros(n_chunk1*n_chunk2)
+    def to_ptr(x):
+        return x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    emd_c_chunk(n_chunk1, n_chunk2, num_actions1, num_actions2, num_states1, num_states2,
+                          to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(one_minus_S),
+                          to_ptr(entries),
+                          np.float64(c_a), int(emd_maxiters))
+    return entries
+
+
+@ray.remote
+def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters, handle=pc.compute_chunk):
+    return handle(chunk, reward_diffs, actions1, actions2, one_minus_S,
+                            np.float64(c_a), np.float64(emd_maxiters))
 
 # TODO: combine common functionality between SS and CSS
 def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
@@ -129,23 +182,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_S = S.copy()
     last_A = A.copy()
 
-    # TODO: how to normalize rewards to support negative and positive? Normalize around what?
-    # Maybe: 
-    # - normalize reward matrix vs. expected rewards vs. differences?
-    # - minmax vs. mean 
-    # FOR NOW: just minmax scale the expected rewards? nah so sus, makes reward of 2 indistinguishable from reward of 100
-    # IN FACT: just do some amount of normalization on the COMBINED reward matrices...!!!! Yes?
-    # Options:
-    # - normalize between [0, 1]
-    # - normalize between [-1, 1]
-    # - normalize pairwise (mat1 vs. mat2)
-    # - normalize on entire dataset (mat1...matn)
-    #   - however, want to be able to have (n-1), add in (n) and not need to recompute much, partial ordering (?), etc.
-    #   - task 1 similar to task2, task1 similar to task3...what can we say about task2 vs. task3?
-    #   - task A has reward 100, task B has reward 101, task C has reward 102
-    #   - N(d(a, b)), N(d(a, c)) -> N(d(b, c)) <= N(d(a, b)) + N(d(a, c)) vs. N(d(b, c)) <= N(d(a, b) + d(b, c))
-    # Yea....still lots of things to consider..
-
     def norm(mat1, mat2, method):
         combined = np.concatenate([mat1.flatten(), mat2.flatten()])
         if method == 'l1' or method == 'l2':
@@ -174,40 +210,16 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
 
     if not self_similarity:
-        action_pairs = np.array([(i, j) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))
+        action_pairs = np.array([np.float64((i, j)) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))
     else:
-        action_pairs = np.nan*np.zeros((n_actions1, n_actions2, 2))
+        action_pairs = -1*np.ones((n_actions1, n_actions2, 2))
         for u in states1:
             for v in states2[u + 1:]:
                 for alpha in out_neighbors_S1[u]:
                     for beta in out_neighbors_S2[v]:
-                        action_pairs[alpha, beta, :] = (alpha, beta)
+                        action_pairs[alpha, beta, :] = np.float64((alpha, beta))
 
     action_chunks = np.array_split(action_pairs, NUM_CPU)
-    @ray.remote
-    def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S):
-        n_a1, n_a2, _ = chunk.shape
-        entries = [np.nan] * (n_a1 * n_a2)
-        init = False
-        if (one_minus_S == 1).all():
-            init = True
-        count = -1
-        for i in range(n_a1):
-            for j in range(n_a2):
-                count += 1
-                alpha, beta = chunk[i, j]
-                if np.isnan(alpha) or np.isnan(beta):
-                    entries[count] = np.nan
-                    continue
-                alpha = int(alpha)
-                beta = int(beta)
-                d_rwd = reward_diffs[alpha, beta]
-                x = actions1[alpha]
-                y = actions2[beta]
-                d_emd = ot.lp.emd_c(x, y, one_minus_S, emd_maxiters)[1] if not init else 1
-                entry = 1 - one_minus_c_a * d_rwd - c_a * d_emd
-                entries[count] = entry
-        return np.array(entries)
 
     done = False
     iter = 0
@@ -216,10 +228,18 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         one_minus_S = 1 - S
         one_minus_S_id = ray.put(one_minus_S)
 
-        bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, one_minus_S_id)
+        # bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, one_minus_S_id,
+        #                                                 c_a, emd_maxiters,
+        #                                                 handle=compute_a_py_full)
+        #                                                 # handle=pc.compute_chunk)
+        # remoted = [bind_compute_a(chunk) for chunk in action_chunks]
+        # new_A = np.concatenate([ray.get(x) for x in remoted]).reshape((n_actions1, n_actions2))
+        bind_compute_a = lambda chunk: compute_a_py_full(chunk, cached_reward_differences,
+                                                    action_dists1, action_dists2,
+                                                    one_minus_S, c_a, emd_maxiters)
         remoted = [bind_compute_a(chunk) for chunk in action_chunks]
-        new_A = np.concatenate([ray.get(x) for x in remoted]).reshape((n_actions1, n_actions2))
-        A[~np.isnan(new_A)] = new_A[~np.isnan(new_A)]
+        new_A = np.concatenate(remoted).reshape((n_actions1, n_actions2))
+        A[new_A >= 0] = new_A[new_A >= 0]
         # Make symmetric if needed
         if self_similarity:
             i_lower = np.tril_indices(len(A), -1)

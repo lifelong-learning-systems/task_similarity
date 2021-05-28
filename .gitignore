@@ -1,4 +1,10 @@
 **/.vscode
 **/__pycache__
 **/*.pyc
+**/*.c
+**/*.cpp
+build/
 **/*.egg-info
+**/*.swp
+**/*.so
+**/*_api.h
