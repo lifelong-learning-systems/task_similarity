@@ -16,6 +16,8 @@
     - `git clone <TASK_SIMILARITY_REPO_URL>`
     - `cd task_similarity`
     - `pip install -e .`
+- Additionally install `"ray[default]"`:
+    - `pip install "ray[default]`
 - If on Mac, may need to configure a signing identity to allow connections:
     - Follow instructions [here](https://stackoverflow.com/questions/19688841/add-python-application-to-accept-incoming-network-connections/21052159#21052159)
         1. create signing identity
