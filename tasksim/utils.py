@@ -48,6 +48,13 @@ def init_ray():
     NUM_CPU = ray.available_resources()['CPU'] if 'CPU' in ray.available_resources() else NUM_CPU
     if DEBUG_PRINT:
         print(f'TaskSim: Ray initialized with {NUM_CPU} CPUs')
+        print(f'TaskSim: Preparing ray workers..')
+    from .gridworld_generator import compare_shapes2_norm
+    # TODO: use a proper Pool instead
+    # Basically a clean pass through, initialize the workers, etc.
+    _ = compare_shapes2_norm((1, 1), (1, 1))
+    if DEBUG_PRINT:
+        print(f'TaskSim: Ray initialization complete!')
 
 def get_num_cpu():
     return NUM_CPU
