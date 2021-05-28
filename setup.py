@@ -44,7 +44,7 @@ setup(
         'pyinstrument',
         'numba',
         'ray',
-        'ray[default]'
+        '"ray[default]"'
     ],
     zip_safe=False,
 )
