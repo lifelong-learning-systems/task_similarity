@@ -121,6 +121,29 @@ def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_max
     return handle(chunk, reward_diffs, actions1, actions2, one_minus_S,
                             np.float64(c_a), np.float64(emd_maxiters))
 
+@ray.remote
+def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
+    chunk_n1, chunk_n2, _ = chunk.shape
+    count = -1
+    entries = np.ones(chunk_n1 * chunk_n2) * -1
+    for i in range(chunk_n1):
+        for j in range(chunk_n2):
+            count += 1
+            if (chunk[i, j][0] < 0) or (chunk[i, j][1] < 0):
+                entries[count] = -1
+                continue
+            u = int(chunk[i, j][0])
+            v = int(chunk[i, j][1])
+            if not len(out_S1[u]) or not len(out_S2[v]):
+                continue
+            haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
+            haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
+            haus = max(haus1, haus2)
+            entry = c_s * (1 - haus)
+            entries[count] = entry
+    return entries
+
+
 # TODO: combine common functionality between SS and CSS
 def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                           stop_atol=1e-4, max_iters=1e5):
@@ -207,19 +230,25 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     reward_diffs_id = ray.put(cached_reward_differences)
     actions1_id = ray.put(action_dists1)
     actions2_id = ray.put(action_dists2)
+    out_S1_id = ray.put(out_neighbors_S1)
+    out_S2_id = ray.put(out_neighbors_S2)
 
 
     if not self_similarity:
         action_pairs = np.array([np.float64((i, j)) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))
+        state_pairs = np.array([np.float64((i, j)) for i in range(n_states1) for j in range(n_states2)]).reshape((n_states1, n_states2, 2))
     else:
         action_pairs = -1*np.ones((n_actions1, n_actions2, 2))
+        state_pairs = -1*np.ones((n_states1, n_states2, 2))
         for u in states1:
             for v in states2[u + 1:]:
+                state_pairs[u, v, :] = np.float64((u, v))
                 for alpha in out_neighbors_S1[u]:
                     for beta in out_neighbors_S2[v]:
                         action_pairs[alpha, beta, :] = np.float64((alpha, beta))
 
     action_chunks = np.array_split(action_pairs, NUM_CPU)
+    state_chunks = np.array_split(state_pairs, NUM_CPU)
 
     done = False
     iter = 0
@@ -228,17 +257,12 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         one_minus_S = 1 - S
         one_minus_S_id = ray.put(one_minus_S)
 
-        # bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, one_minus_S_id,
-        #                                                 c_a, emd_maxiters,
-        #                                                 handle=compute_a_py_full)
-        #                                                 # handle=pc.compute_chunk)
-        # remoted = [bind_compute_a(chunk) for chunk in action_chunks]
-        # new_A = np.concatenate([ray.get(x) for x in remoted]).reshape((n_actions1, n_actions2))
-        bind_compute_a = lambda chunk: compute_a_py_full(chunk, cached_reward_differences,
-                                                    action_dists1, action_dists2,
-                                                    one_minus_S, c_a, emd_maxiters)
-        remoted = [bind_compute_a(chunk) for chunk in action_chunks]
-        new_A = np.concatenate(remoted).reshape((n_actions1, n_actions2))
+        bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, one_minus_S_id,
+                                                        c_a, emd_maxiters,
+                                                        handle=compute_a_py_full)
+                                                        # handle=pc.compute_chunk)
+        remoted_a = [bind_compute_a(chunk) for chunk in action_chunks]
+        new_A = np.concatenate([ray.get(x) for x in remoted_a]).reshape((n_actions1, n_actions2))
         A[new_A >= 0] = new_A[new_A >= 0]
         # Make symmetric if needed
         if self_similarity:
@@ -247,21 +271,17 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
         one_minus_A = 1 - A
         one_minus_A_transpose = one_minus_A.T
-        for u in states1:
-            if not self_similarity:
-                v_list = states2
-            else:
-                v_list = states2[u+1:]
-            for v in v_list:
-                if not len(out_neighbors_S1[u]) or not len(out_neighbors_S2[v]):
-                    continue
-                haus1 = directed_hausdorff_numpy(one_minus_A, out_neighbors_S1[u], out_neighbors_S2[v])
-                haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_neighbors_S2[v], out_neighbors_S1[u])
-                haus = max(haus1, haus2)
-                entry = c_s * (1 - haus)
-                S[u, v] = entry
-                if self_similarity:
-                    S[v, u] = entry
+        one_minus_A_id = ray.put(one_minus_A)
+        one_minus_A_transpose_id = ray.put(one_minus_A.T)
+        bind_compute_s = lambda chunk: compute_s.remote(chunk, out_S1_id, out_S2_id,
+                                                        one_minus_A_id, one_minus_A_transpose_id,
+                                                        c_s)
+        remoted_s = [bind_compute_s(chunk) for chunk in state_chunks]
+        new_S = np.concatenate([ray.get(x) for x in remoted_s]).reshape((n_states1, n_states2))
+        S[new_S >= 0] = new_S[new_S >= 0]
+        if self_similarity:
+            i_lower = np.tril_indices(len(S), -1)
+            S[i_lower] = S.T[i_lower]
 
         if np.allclose(A, last_A, rtol=stop_rtol, atol=stop_atol) and np.allclose(S, last_S, rtol=stop_rtol,
                                                                                   atol=stop_atol):
