@@ -30,5 +30,13 @@
 - Create custom experiments via the provided utils
     - `tasksim.structural_similarity`
     - `tasksim.gridworld_generator`
+- To avoid initializing Ray on every invocation:
+    - In command line, first run:
+        - `ray start --head --num-cpus=<NUM_CPUS>`
+    - Then bring down later with:
+        - `ray stop --force`
+    - You can also initialize ray explicitly, via:
+        - `tasksim.init_ray()`
+        - If not used, then `init_ray()` will be invoked when it is lazily first needed
 
 

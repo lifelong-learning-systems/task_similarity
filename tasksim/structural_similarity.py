@@ -6,7 +6,7 @@ from sklearn.preprocessing import normalize, minmax_scale
 from enum import Enum
 import ray
 
-from tasksim import NUM_CPU, emd_c, emd_c_chunk
+from .utils import emd_c, emd_c_chunk, get_num_cpu, init_ray
 import process_chunk as pc
 from numba import jit
 from numba.extending import get_cython_function_address
@@ -175,6 +175,11 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                                 stop_atol=1e-4, max_iters=1e5,
                                 init_strategy: InitStrategy = InitStrategy.ZEROS, self_similarity=False):
+    cpus = get_num_cpu()
+    while cpus is None:
+        print('TaskSim: attempting to invoke without Ray initialized...')
+        init_ray()
+        cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
 
@@ -247,8 +252,8 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
                     for beta in out_neighbors_S2[v]:
                         action_pairs[alpha, beta, :] = np.float64((alpha, beta))
 
-    action_chunks = np.array_split(action_pairs, NUM_CPU)
-    state_chunks = np.array_split(state_pairs, NUM_CPU)
+    action_chunks = np.array_split(action_pairs, cpus)
+    state_chunks = np.array_split(state_pairs, cpus)
 
     done = False
     iter = 0

@@ -2,11 +2,13 @@ from matplotlib import pyplot as plt
 import numpy as np
 import timeit
 
+import tasksim
 from tasksim import MDPGraph, DEFAULT_CS, DEFAULT_CA
 from tasksim.structural_similarity import structural_similarity
 from tasksim.gridworld_generator import create_grid
 
 if __name__ == '__main__':
+    tasksim.init_ray()
     prob = 0.9
     c_a = DEFAULT_CA
     c_s = DEFAULT_CS
