@@ -145,6 +145,8 @@ if __name__ == "__main__":
     # s, a, num_iters, d = ss_2(np.concatenate((P, P2), axis=1), np.concatenate((R, R2), axis=1), out_neighbors_S2, c_a, c_s)
 
     print("S\n", s)
+    print("S2\n", s2)
+    print("delta_S\n", 1 - s)
     print("delta_S2\n", 1 - s2)
     print("A\n", a)
     print("A2\n", a2)
