@@ -86,26 +86,44 @@ def structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_m
 
 
 if __name__ == "__main__":
+    np.set_printoptions(linewidth=200)
     # Example based on the MDP described in Figure 1 of https://www.ijcai.org/Proceedings/2019/0511.pdf.
-    out_neighbors_S = {0: [0, 1], 1: [2, 3], 2: [], 3: [], 4: [], 5: []}
+    # NOTE: for cross_structural_similarity, requires all states to have at least one action
+    out_neighbors_S = {0: [0, 1], 1: [2, 3], 2: [4], 3: [5], 4: [6], 5: [7]}
     P = np.array([[0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                   [0.0, 0.0, 0.0, 0.2, 0.5, 0.3],
                   [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-                  [0.0, 0.0, 0.15, 0.15, 0.25, 0.45]])
+                  [0.0, 0.0, 0.15, 0.15, 0.25, 0.45],
+                  [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]])
     R = np.array([[0.0, 0.0, 0.3, 0.0, 0.0, 0.0],
                   [0.0, 0.0, 0.0, 0.6, 0.7, 0.9],
                   [0.0, 0.0, 0.1, 0.0, 0.0, 0.0],
-                  [0.0, 0.0, 0.2, 0.4, 0.6, 0.5]])
+                  [0.0, 0.0, 0.2, 0.4, 0.6, 0.5],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
 
-    out_neighbors_S2 = {0: [0, 1], 1: [2, 3], 2: [], 3: [], 4: [], 5: []}
+    out_neighbors_S2 = {0: [0, 1], 1: [2, 3], 2: [4], 3: [5], 4: [6], 5: [7]}
     P2 = np.array([[0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
                   [0.0, 0.0, 0.0, 0.2, 0.5, 0.3],
                   [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-                  [0.0, 0.0, 0.15, 0.15, 0.25, 0.45]])
+                  [0.0, 0.0, 0.15, 0.15, 0.25, 0.45],
+                  [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]])
     R2 = np.array([[0.0, 0.0, 0.3, 0.0, 0.0, 0.0],
                   [0.0, 0.0, 0.0, 0.6, 0.7, 0.9],
                   [0.0, 0.0, 0.1, 0.0, 0.0, 0.0],
-                  [0.0, 0.0, 0.2, 0.4, 0.6, 0.5]])
+                  [0.0, 0.0, 0.2, 0.4, 0.6, 0.5],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
 
     # out_neighbors_S2 = {0: [0, 1], 1: [2, 3], 2: [], 3: [], 4: [], 5: [], 6: []}
     # out_neighbors_S2 = {0: [0, 1], 1: [2, 3], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [0, 1], 8: [2, 3], 9: [], 10: [], 11: [], 12: [], 13: []}
@@ -120,18 +138,24 @@ if __name__ == "__main__":
 
     c_s = 0.95
     c_a = 0.95
+    import tasksim.structural_similarity as sim
     s, a, num_iters, d = structural_similarity(P, P2, R, R2, out_neighbors_S, out_neighbors_S2, c_a, c_s)
+    s2, a2, num_iters2, d2 = sim.cross_structural_similarity(P, P2, R, R2, out_neighbors_S, out_neighbors_S2, c_a, c_s)
     # s, a, num_iters, d = structural_similarity(P, P, R, R, out_neighbors_S, out_neighbors_S, c_a, c_s)
     # s, a, num_iters, d = ss_2(np.concatenate((P, P2), axis=1), np.concatenate((R, R2), axis=1), out_neighbors_S2, c_a, c_s)
 
     print("S\n", s)
-    print("delta_S\n", 1 - s)
+    print("delta_S2\n", 1 - s2)
     print("A\n", a)
+    print("A2\n", a2)
     print("num iters:", num_iters)
+    print("num iters2:", num_iters2)
     print("converged:", d)
+    print("converged2:", d2)
 
     ns, nt = s.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    print(ot.emd2(a, b, 1-s))
+    print('Score', ot.emd2(a, b, 1-s))
+    print('Score2', sim.normalize_score(sim.final_score(s2), c_a, c_s))
 

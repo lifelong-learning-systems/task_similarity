@@ -1,10 +1,12 @@
 import numpy as np
 import ot
 import ot.lp
+import math
 from time import time as timer
 from sklearn.preprocessing import normalize, minmax_scale
 from enum import Enum
 import ray
+import scipy
 
 from .utils import emd_c, emd_c_chunk, get_num_cpu, init_ray
 import process_chunk as pc
@@ -24,6 +26,8 @@ class InitStrategy(Enum):
 
 # OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
 # I like having c_a as 0.5, since it evenly balances d_rwd and d_emd, then c_s around 0.99-0.999ish
+# TODO: incorporate rtol & atol by being inspired by numpy.isclose
+# - isclose(a, b, rtol, btol) -> abs(a - b) <= (atol + rtol*abs(b))
 def compute_constant_limit(c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # solving the following recurrence relations for a(n) and s(n):
     # a(n+1) = 1 - c_a(1 - s(n))
@@ -170,18 +174,134 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFA
                                        c_a=c_a, c_s=c_s, stop_rtol=stop_rtol, stop_atol=stop_atol, max_iters=max_iters,
                                        self_similarity=True)
 
+@ray.remote
+def compute_T_chunk(chunk, T1, T2, R1, R2, a_info1, a_info2, metric='euclidean', c_r=0.5):
+    chunk_n1, chunk_n2, _ = chunk.shape
+    num_actions1, num_states1 = T1.shape
+    num_actions2, num_states2 = T2.shape
+
+    #ot.tic()
+    a = np.ones(num_states1) / num_states1
+    b = np.ones(num_states2) / num_states2
+    # TODO: only sort the ones in our chunk lol
+    T1_sorted = np.zeros(T1.shape)
+    T2_sorted = np.zeros(T2.shape)
+    T1_sorted_unique = {}
+    T2_sorted_unique = {}
+    T1_lookup = np.zeros(num_actions1, dtype=int)
+    T2_lookup = np.zeros(num_actions2, dtype=int)
+    u_list = []
+    v_list = []
+    for i in range(chunk_n1):
+        for j in range(chunk_n2):
+            if (chunk[i, j][0] < 0) or (chunk[i, j][1] < 0):
+                continue
+            u = int(chunk[i, j][0])
+            v = int(chunk[i, j][1])
+            u_list.append(u)
+            v_list.append(v)
+
+    for i in u_list:
+        a_info = a_info1[i]
+        temp = a_info.probs
+        key = tuple(temp)
+        unique = T1_sorted_unique.setdefault(key, i)
+        T1_lookup[i] = unique
+        if unique == i:
+            T1_sorted[i] = T1[i][np.argsort(T1[i])]
+    for i in v_list:
+        a_info = a_info2[i]
+        temp = a_info.probs
+        key = tuple(temp)
+        unique = T2_sorted_unique.setdefault(key, i)
+        T2_lookup[i] = unique
+        if unique == i:
+            T2_sorted[i] = T2[i][np.argsort(T2[i])]
+        if unique == i:
+            T2_sorted[i] = T2[i][np.argsort(T2[i])]
+    #ot.toc('Initialization: {}')
+
+    #ot.tic()
+    R1_expected = np.einsum('ij,ij->i', T1, R1)
+    R2_expected = np.einsum('ij,ij->i', T2, R2)
+    #ot.toc('Expected rewards: {}')
+
+    count = -1
+    entries = np.ones(chunk_n1 * chunk_n2) * -1
+    unique_cached = {}
+    #ot.tic()
+    for i in range(chunk_n1):
+        for j in range(chunk_n2):
+            count += 1
+            if (chunk[i, j][0] < 0) or (chunk[i, j][1] < 0):
+                entries[count] = -1
+                continue
+            u = int(chunk[i, j][0])
+            v = int(chunk[i, j][1])
+            key = (T1_lookup[u], T2_lookup[v])
+            if key in unique_cached:
+                d_emd = unique_cached[key]
+            else:
+                x_sorted = T1_sorted[key[0]]
+                y_sorted = T2_sorted[key[1]]
+                d_emd, iters = ot.lp.emd_wrap.emd_1d_sorted_more(a, b, x_sorted, y_sorted, metric=metric)[2:]
+                unique_cached[key] = d_emd
+            d_rwd = math.fabs(R1_expected[u] - R2_expected[v])
+            dist = (1 - c_r) * d_emd + c_r * d_rwd
+            entries[count] = 1 - dist
+    #ot.toc('Main loop: {}')
+    return entries
+
+def compute_T_ray(G1, G2, metric='euclidean', self_similarity=False, c_r=0.5):
+    # T1, T2 = G1.rel_P, G2.rel_P
+    # R1, R2 = G1.rel_R, G2.rel_R
+    T1, T2 = G1.P, G2.P
+    R1, R2 = G1.R, G2.R
+    n_actions1, n_states1 = T1.shape
+    n_actions2, n_states2 = T2.shape
+    states1 = list(range(n_states1))
+    states2 = list(range(n_states2))
+    T1_id = ray.put(T1)
+    T2_id = ray.put(T2)
+    R1_id = ray.put(R1)
+    R2_id = ray.put(R2)
+    a_info1_id = ray.put(G1.out_a_info)
+    a_info2_id = ray.put(G2.out_a_info)
+    if not self_similarity:
+        #action_pairs = np.array([np.float64((i, j)) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))
+        action_pairs = np.flip(np.stack(np.meshgrid(range(n_actions2), range(n_actions1)), axis=2), axis=2)
+    else:
+        action_pairs = -1*np.ones((n_actions1, n_actions2, 2))
+        for u in states1:
+            for v in states2[u + 1:]:
+                for alpha in G1.out_s[u]:
+                    for beta in G2.out_s[v]:
+                        action_pairs[alpha, beta, :] = np.float64((alpha, beta))
+
+    action_chunks = np.array_split(action_pairs, get_num_cpu())
+    #ot.tic()
+    bind_compute_a = lambda chunk: compute_T_chunk.remote(chunk, T1_id, T2_id, R1_id, R2_id, a_info1_id, a_info2_id, metric=metric, c_r=c_r)
+    remoted_a = [bind_compute_a(chunk) for chunk in action_chunks]
+    new_T = np.concatenate([ray.get(x) for x in remoted_a]).reshape((n_actions1, n_actions2))
+    #ot.toc('Overall chunk computation and reshaping: {}')
+    if self_similarity:
+        T = np.zeros((n_actions1, n_actions2))
+        T[new_T >= 0] = new_T[new_T >= 0]
+        i_lower = np.tril_indices(len(T), -1)
+        T[i_lower] = T.T[i_lower]
+        return T
+    return new_T
+
+
 # TODO: also consider (lower importance) other granularities besides each state (subgraph???)
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                                 stop_atol=1e-4, max_iters=1e5,
                                 init_strategy: InitStrategy = InitStrategy.ZEROS, self_similarity=False):
     cpus = get_num_cpu()
-    while cpus is None:
-        print('TaskSim: attempting to invoke without Ray initialized...')
-        init_ray()
-        cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
+    # T = compute_T(T1, T2)
 
     # Initialization SHOULDN'T matter that much...
     # zeros means normalizing slightly overshoots (positive)

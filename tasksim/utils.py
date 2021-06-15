@@ -57,4 +57,7 @@ def init_ray():
         print(f'TaskSim: Ray initialization complete!')
 
 def get_num_cpu():
+    while NUM_CPU is None:
+        print('TaskSim: attempting to invoke without Ray initialized...')
+        init_ray()
     return NUM_CPU
