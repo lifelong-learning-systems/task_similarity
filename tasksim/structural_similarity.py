@@ -48,7 +48,8 @@ def final_score(S, c_n=0.9):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * (1 - 1/(abs(ns - nt) + 1))
+    d_num_states = (1 - 1/(abs(ns - nt) + 1))
+    return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
 
 def final_score_new(S):
     if isinstance(S, tuple):
