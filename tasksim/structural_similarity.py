@@ -50,7 +50,16 @@ def final_score(S):
     b = np.array([1/nt for _ in range(nt)])
     return ot.emd2(a, b, 1-S)
 
+def final_score_new(S):
+    if isinstance(S, tuple):
+        S = S[0]
+    ns, nt = S.shape
+    a = np.array([1/ns for _ in range(ns)])
+    b = np.array([1/nt for _ in range(nt)])
+    return ot.emd2(a, b, 1-S)
+
 def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
+    # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
     limit = compute_constant_limit(c_a, c_s)
     # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
     return 1 - (1 - score)/(1 - limit)
@@ -139,11 +148,16 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
             u = int(chunk[i, j][0])
             v = int(chunk[i, j][1])
             if not len(out_S1[u]) or not len(out_S2[v]):
-                continue
-            haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
-            haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
-            haus = max(haus1, haus2)
-            entry = c_s * (1 - haus)
+                if not len(out_S1[u]) and not len(out_S2[v]):
+                    #entry = c_s
+                    entry = c_s
+                else:
+                    entry = 0
+            else:
+                haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
+                haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
+                haus = max(haus1, haus2)
+                entry = c_s * (1 - haus)
             entries[count] = entry
     return entries
 
@@ -293,6 +307,18 @@ def compute_T_ray(G1, G2, metric='euclidean', self_similarity=False, c_r=0.5):
     return new_T
 
 
+def norm(mat1, mat2, method):
+    mat1 = np.array(mat1)
+    mat2 = np.array(mat2)
+    combined = np.concatenate([mat1.flatten(), mat2.flatten()])
+    if method == 'l1' or method == 'l2':
+        combined = normalize([combined], norm=method)[0]
+    if method == 'minmax':
+        combined = minmax_scale(combined)
+    ret1 = combined[:mat1.size].reshape(mat1.shape)
+    ret2 = combined[mat1.size:].reshape(mat2.shape)
+    return ret1, ret2
+
 # TODO: also consider (lower importance) other granularities besides each state (subgraph???)
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
@@ -330,15 +356,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_S = S.copy()
     last_A = A.copy()
 
-    def norm(mat1, mat2, method):
-        combined = np.concatenate([mat1.flatten(), mat2.flatten()])
-        if method == 'l1' or method == 'l2':
-            combined = normalize([combined], norm=method).squeeze()
-        if method == 'minmax':
-            combined = minmax_scale(combined)
-        ret1 = combined[:mat1.size].reshape(mat1.shape)
-        ret2 = combined[mat1.size:].reshape(mat2.shape)
-        return ret1, ret2
 
     reward_matrix1, reward_matrix2 = norm(reward_matrix1, reward_matrix2, 'minmax')
 

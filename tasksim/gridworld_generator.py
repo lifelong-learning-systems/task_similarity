@@ -47,25 +47,26 @@ class MDPGraph:
                     self.rel_R[a, list_idx] = r
 
     @classmethod
-    def from_file(cls, path, reward=1):
+    def from_file(cls, path, reward=1, noops=True):
         grid, success_prob = parse_gridworld(path=path)
-        return cls.from_grid(grid, success_prob, reward=reward)
+        return cls.from_grid(grid, success_prob, reward=reward, noops=noops)
 
     @classmethod
-    def from_grid(cls, grid, success_prob, reward=1):
-        P, R, out_s, out_a, out_a_info = cls.grid_to_graph(grid, success_prob, reward=reward)
+    def from_grid(cls, grid, success_prob, reward=1, noops=True):
+        P, R, out_s, out_a, out_a_info = cls.grid_to_graph(grid, success_prob, reward=reward, noops=noops)
         return cls(P, R, out_s, out_a, out_a_info)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
     @classmethod
-    def get_valid_adjacent(cls, state, grid):
+    def get_valid_adjacent(cls, state, grid, noops):
         height, width = grid.shape
         row = state // width
         col = state - width*row
 
         moves = [None] * 5
         # no-op
-        moves[4] = state
+        if noops:
+            moves[4] = state
         # obstacles and goal states have no out neighbors (besides no-op)
         if grid[row][col] != 0:
             return moves
@@ -84,7 +85,7 @@ class MDPGraph:
         return moves
 
     @classmethod
-    def grid_to_graph(cls, grid, success_prob=0.9, reward=1):
+    def grid_to_graph(cls, grid, success_prob=0.9, reward=1, noops=True):
         height, width = grid.shape
         goal_states = []
         for i in range(height):
@@ -101,7 +102,7 @@ class MDPGraph:
         out_a_info = {}
         ActionInfo = namedtuple("ActionInfo", "states rel_states probs")
         for s in range(num_states):
-            actions = cls.get_valid_adjacent(s, grid)
+            actions = cls.get_valid_adjacent(s, grid, noops)
             filtered_actions = [a for a in actions if a is not None]
             # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
             #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
@@ -145,6 +146,7 @@ class MDPGraph:
 
     # reorders the out-actions of the specified state
     # can apply different permutations within an MDP and/or between MDPs
+    # TODO: work in progress
     def reorder_actions(self, u, new_out_s):
         old_rows = self.out_s[u]
         new_rows = np.array(new_out_s)
@@ -170,6 +172,7 @@ class MDPGraph:
         swap_dictionary(self.out_a_info)
         return True
 
+    #TODO: work in progress
     def reorder_states(self, new_order):
         old_states = np.array(range(self.P.shape[1]))
         new_states = np.array(new_order)
@@ -317,13 +320,13 @@ def compare_files2(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
 def compare_files2_norm(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return sim.normalize_score(compare_files2(file1, file2, c_a, c_s), c_a, c_s)
 
-def compare_shapes(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
-    return compare_graphs(MDPGraph.from_grid(create_grid(shape1), success_prob1), \
-                          MDPGraph.from_grid(create_grid(shape2), success_prob2), c_a=c_a, c_s=c_s)
-def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
-    return sim.final_score(compare_shapes(shape1, shape2, success_prob1, success_prob2, c_a, c_s))
-def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
-    return sim.normalize_score(compare_shapes2(shape1, shape2, success_prob1, success_prob2, c_a, c_s), c_a, c_s)
+def compare_shapes(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, noops=True):
+    return compare_graphs(MDPGraph.from_grid(create_grid(shape1), success_prob1, noops=noops), \
+                          MDPGraph.from_grid(create_grid(shape2), success_prob2, noops=noops), c_a=c_a, c_s=c_s)
+def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, noops=True):
+    return sim.final_score(compare_shapes(shape1, shape2, success_prob1, success_prob2, c_a, c_s, noops=noops))
+def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, noops=True):
+    return sim.normalize_score(compare_shapes2(shape1, shape2, success_prob1, success_prob2, c_a, c_s, noops=noops), c_a, c_s)
 
 # between two grids
 def compare_grid_symmetry(a, b, done=False):
