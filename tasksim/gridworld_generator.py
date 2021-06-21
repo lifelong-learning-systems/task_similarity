@@ -195,13 +195,13 @@ class MDPGraph:
         self.compute_relatives()
         for a, info in self.out_a_info.items():
             states, rel_states, probs = info.states, info.rel_states, info.probs
-            import pdb; pdb.set_trace()
-            probs = np.array(out_neighbors_a[a_node][states])
-            prob_sorted = np.argsort(probs)
-            states = states[prob_sorted]
-            probs = probs[prob_sorted]
-            rel_states = states - a_node + num_states
-            info = ActionInfo(states, rel_states, probs)
+            # import pdb; pdb.set_trace()
+            # probs = np.array(out_neighbors_a[a_node][states])
+            # prob_sorted = np.argsort(probs)
+            # states = states[prob_sorted]
+            # probs = probs[prob_sorted]
+            # rel_states = states - a_node + num_states
+            # info = ActionInfo(states, rel_states, probs)
         return True
 
     # G = (P, R, out_s, out_a) tuple
