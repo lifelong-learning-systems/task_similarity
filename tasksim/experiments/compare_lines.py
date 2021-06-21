@@ -71,8 +71,8 @@ if __name__ == '__main__':
             dist_S, dist_A, numiters, done = G1.compare(G2)
             # s_score = sim.final_score(sim.norm(dist_S, [], 'minmax')[0])
             # a_score = sim.final_score(sim.norm(dist_A, [], 'minmax')[0])
-            s_score = sim.final_score(dist_S) * max(states1/states2, states2/states1)
-            a_score = sim.final_score(dist_A) * max(actions1/actions2, actions2/actions1)
+            s_score = sim.final_score(dist_S)
+            a_score = sim.final_score(dist_A)
             comparisons[i][j] = 0.5 * s_score + 0.5 * a_score
     
     # Check to ensure metric properties hold
