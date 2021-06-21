@@ -42,13 +42,13 @@ def compute_constant_limit(c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     #limit_a = C/(1 - A)
     return 1 - limit_s
 
-def final_score(S):
+def final_score(S, c_n=0.9):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    return ot.emd2(a, b, 1-S)
+    return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * (1 - 1/(abs(ns - nt) + 1))
 
 def final_score_new(S):
     if isinstance(S, tuple):

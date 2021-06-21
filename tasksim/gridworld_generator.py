@@ -143,6 +143,9 @@ class MDPGraph:
                 if P[i, g] > 0:
                     R[i, g] = reward
         return P, R, out_neighbors_s, out_neighbors_a, out_a_info
+    
+    def copy(self):
+        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.out_a_info)
 
     # reorders the out-actions of the specified state
     # can apply different permutations within an MDP and/or between MDPs

@@ -59,11 +59,12 @@ if __name__ == '__main__':
     np.set_printoptions(formatter={'float_kind':float_formatter})
     sizes = range(2, 9, 1)
     comparisons = np.zeros((len(sizes), len(sizes)))
+    graphs = [gen.MDPGraph.from_grid(gen.create_grid((1, x)), 0.9, noops=False) for x in range(2, 9)]
     for i, s1 in enumerate(sizes):
         for j, s2 in enumerate(sizes):
             print(i, j)
-            G1 = gen.MDPGraph.from_grid(gen.create_grid((1, s1)), 0.9, noops=False)
-            G2 = gen.MDPGraph.from_grid(gen.create_grid((1, s2)), 0.9, noops=False)
+            G1 = graphs[i]
+            G2 = graphs[j]
             actions1, states1 = G1.P.shape
             actions2, states2 = G2.P.shape
             #ot.toc('Generating graphs: {}')
@@ -83,9 +84,7 @@ if __name__ == '__main__':
     np.set_printoptions(linewidth=200, precision=num_print_decimals, suppress=True)
     print(list(sizes))
     print(comparisons)
-    G2 = gen.MDPGraph.from_grid(gen.create_grid((1, 2)), 0.9, noops=False)
-    G3 = gen.MDPGraph.from_grid(gen.create_grid((1, 3)), 0.9, noops=False)
-    G4 = gen.MDPGraph.from_grid(gen.create_grid((1, 4)), 0.9, noops=False)
+    G2, G3, G4 = graphs[0], graphs[1], graphs[2]
     s23, a23, _, _ = G2.compare(G3)
     s24, a24, _, _ = G2.compare(G4)
     s34, a34, _, _ = G3.compare(G4)
