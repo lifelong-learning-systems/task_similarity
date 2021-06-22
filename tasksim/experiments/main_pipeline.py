@@ -44,14 +44,18 @@ def shape_comparisons(line_sizes=None, grid_sizes=None):
         comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, ticks=[str(s[1]) for s in shapes])
         print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
         print(np.triu(comp))
-        plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{header.lower()}_similarities.png')
+        plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{header.lower().replace(" ", "_")}_similarities.png')
         return comp, heatmap, metric
     line_shapes = [(1, i) for i in line_sizes]
     grid_shapes = [(i, i) for i in grid_sizes]
     lines = generate_graphs(line_shapes)
     grids = generate_graphs(grid_shapes)
+    lines_noops = generate_graphs(line_shapes, noops=True)
+    grids_noops = generate_graphs(grid_shapes, noops=True)
     process_and_print(lines, line_shapes, 'Line')
     process_and_print(grids, grid_shapes, 'Grid')
+    process_and_print(lines_noops, line_shapes, 'Line with No-ops')
+    process_and_print(grids_noops, grid_shapes, 'Grid with No-ops')
 
 if __name__ == '__main__':
     plt.ion()
