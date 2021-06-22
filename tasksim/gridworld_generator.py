@@ -23,28 +23,11 @@ from collections import namedtuple
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
 
-    def __init__(self, P, R, out_s, out_a, out_a_info):
+    def __init__(self, P, R, out_s, out_a):
         self.P = P.copy()
         self.R = R.copy()
         self.out_s = out_s.copy()
         self.out_a = out_a.copy()
-        self.out_a_info = out_a_info.copy()
-        self.compute_relatives()
-
-    def compute_relatives(self):
-        num_actions, num_states = self.P.shape
-        self.rel_P = np.zeros((num_actions, 2*num_states + 1))
-        self.rel_R = np.zeros((num_actions, 2*num_states + 1))
-        for u in range(num_states):
-            for a in self.out_s[u]:
-                dist = self.P[a]
-                rewards = self.R[a]
-                for i, vals in enumerate(zip(dist, rewards)):
-                    p, r = vals
-                    delta = i - u
-                    list_idx = delta + num_states
-                    self.rel_P[a, list_idx] = p
-                    self.rel_R[a, list_idx] = r
 
     @classmethod
     def from_file(cls, path, reward=1, noops=True):
@@ -53,8 +36,8 @@ class MDPGraph:
 
     @classmethod
     def from_grid(cls, grid, success_prob, reward=1, noops=True):
-        P, R, out_s, out_a, out_a_info = cls.grid_to_graph(grid, success_prob, reward=reward, noops=noops)
-        return cls(P, R, out_s, out_a, out_a_info)
+        P, R, out_s, out_a  = cls.grid_to_graph(grid, success_prob, reward=reward, noops=noops)
+        return cls(P, R, out_s, out_a)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
     @classmethod
@@ -130,9 +113,6 @@ class MDPGraph:
                 prob_sorted = np.argsort(probs)
                 states = states[prob_sorted]
                 probs = probs[prob_sorted]
-                rel_states = states - a_node + num_states
-                info = ActionInfo(states, rel_states, probs)
-                out_a_info[a_node] = info
                 a_node += 1
             
         num_actions = a_node
@@ -142,67 +122,61 @@ class MDPGraph:
             for g in goal_states:
                 if P[i, g] > 0:
                     R[i, g] = reward
-        return P, R, out_neighbors_s, out_neighbors_a, out_a_info
+        return P, R, out_neighbors_s, out_neighbors_a
     
     def copy(self):
-        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.out_a_info)
+        return MDPGraph(self.P, self.R, self.out_s, self.out_a)
 
     # reorders the out-actions of the specified state
     # can apply different permutations within an MDP and/or between MDPs
     # TODO: work in progress
-    def reorder_actions(self, u, new_out_s):
-        old_rows = self.out_s[u]
-        new_rows = np.array(new_out_s)
-        new_sorted = new_rows[np.argsort(new_rows)]
-        old_sorted = old_rows[np.argsort(old_rows)]
-        # Must just be a permutation of the current out neighbors of s
-        if len(new_sorted) != len(old_sorted) or not (new_sorted == old_sorted).all():
-           return False
-        # Now need to swap rows in: P, R, rel_P, rel_R, out_a, out_a_info
-        # e.g. swap(P, [0, 1, 4], [4, 0, 1])
-        # LEAVE out_s the same
-        # - i.e. state u still has actions 0, 1, 4 associated with it, but now map to what was 4, 0, 1
-        def swap_matrix(matrix):
-            matrix[old_rows] = matrix[new_rows]
-        def swap_dictionary(dictionary):
-            new_vals = {old_r: dictionary[new_r] for old_r, new_r in zip(old_rows, new_rows)}
-            dictionary.update(new_vals)
-        swap_matrix(self.P)
-        swap_matrix(self.R)
-        swap_matrix(self.rel_P)
-        swap_matrix(self.rel_R)
-        swap_dictionary(self.out_a)
-        swap_dictionary(self.out_a_info)
+    # Requires knowledge of which actions within out_s[x] correspond to u, d, l, r, no-op, etc.
+    def shuffle_actions(self, new_out_s):
+        # old_rows = self.out_s[0]
+        # new_rows = np.array(new_out_s)
+        # new_sorted = new_rows[np.argsort(new_rows)]
+        # old_sorted = old_rows[np.argsort(old_rows)]
+        # # Must just be a permutation of the current out neighbors of s
+        # if len(new_sorted) != len(old_sorted) or not (new_sorted == old_sorted).all():
+        #    return False
+        # # Now need to swap rows in: P, R, rel_P, rel_R, out_a, out_a_info
+        # # e.g. swap(P, [0, 1, 4], [4, 0, 1])
+        # # LEAVE out_s the same
+        # # - i.e. state u still has actions 0, 1, 4 associated with it, but now map to what was 4, 0, 1
+        # def swap_matrix(matrix):
+        #     matrix[old_rows] = matrix[new_rows]
+        # def swap_dictionary(dictionary):
+        #     new_vals = {old_r: dictionary[new_r] for old_r, new_r in zip(old_rows, new_rows)}
+        #     dictionary.update(new_vals)
+        # swap_matrix(self.P)
+        # swap_matrix(self.R)
+        # swap_dictionary(self.out_a)
         return True
 
     #TODO: work in progress
-    def reorder_states(self, new_order):
+    def shuffle_states(self, inplace=True, new_order=None, random_state=None):
         old_states = np.array(range(self.P.shape[1]))
+        if new_order is None:
+            random_state = np.random if random_state is None else random_state
+            new_order = old_states.copy()
+            random_state.shuffle(new_order)
         new_states = np.array(new_order)
         new_sorted = new_states[np.argsort(new_states)]
         old_sorted = old_states[np.argsort(old_states)]
         # Must just be a permutation of the current out neighbors of s
         if len(new_sorted) != len(old_sorted) or not (new_sorted == old_sorted).all():
-           return False
+            return None
         # swap keys of out_s
+        if not inplace:
+            self = self.copy()
         self.out_s = {old_s: self.out_s[new_s] for old_s, new_s in zip(old_states, new_states)}
         def swap_cols(matrix):
             matrix[:, old_states] = matrix[:, new_states]
         swap_cols(self.P)
         swap_cols(self.R)
-        for k, v in self.out_a.items():
+        for _, v in self.out_a.items():
             v[old_states] = v[new_states]
-        self.compute_relatives()
-        for a, info in self.out_a_info.items():
-            states, rel_states, probs = info.states, info.rel_states, info.probs
-            # import pdb; pdb.set_trace()
-            # probs = np.array(out_neighbors_a[a_node][states])
-            # prob_sorted = np.argsort(probs)
-            # states = states[prob_sorted]
-            # probs = probs[prob_sorted]
-            # rel_states = states - a_node + num_states
-            # info = ActionInfo(states, rel_states, probs)
-        return True
+        return self
 
     # G = (P, R, out_s, out_a) tuple
     # Deprecated now
@@ -281,7 +255,9 @@ def parse_gridworld(path='./gridworlds/experiment1.txt'):
 # TODO: do rewards need to be normalized between [0, 1]?
 # Goal locations: list of tuples
 # Goal rewards: list of floats
-def create_grid(shape, goal_locations=None, obstacle_locations=None, obstacle_prob=0, random_state=np.random):
+def create_grid(shape, goal_locations=None, obstacle_locations=None, obstacle_prob=0, random_state=None):
+    if random_state is None:
+        random_state = np.random
     rows, cols = shape
     grid = np.zeros(shape)
     if not goal_locations:
@@ -367,19 +343,6 @@ def permute_grid(a, keep_isomorphisms=False):
         if not found:
             filtered.append(b)
     return filtered
-
-def compare_shapes_T(shape1, shape2, p1=.9, p2=.9):
-    G1 = MDPGraph.from_grid(create_grid(shape1), p1)
-    G2 = MDPGraph.from_grid(create_grid(shape2), p2)
-    # Performance wise, basically a quintic fit
-    # n = 33 -> 178 seconds, not bad
-    T = sim.compute_T(G1, G2)
-    return T
-def compare_grids_T(grid1, grid2, p1=.9, p2=.9):
-    G1 = MDPGraph.from_grid(grid1, p1)
-    G2 = MDPGraph.from_grid(grid2, p2)
-    T = sim.compute_T(G1, G2)
-    return T
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
