@@ -231,24 +231,33 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_A = A.copy()
 
 
-    reward_matrix1, reward_matrix2 = norm(reward_matrix1, reward_matrix2, 'minmax')
+    # TODO: handle negative rewards differently...should be able to handle [-1, 1] range
+    #reward_matrix1, reward_matrix2 = norm(reward_matrix1, reward_matrix2, 'minmax')
 
-    # Can precompute expected rewards since loop invariant
-    expected_rewards1 = np.einsum('ij,ij->i', action_dists1, reward_matrix1) 
-    expected_rewards2 = np.einsum('ij,ij->i', action_dists2, reward_matrix2) 
-    def compute_diff(list1, list2):
-        diff = np.zeros((len(list1), len(list2)))
-        for i in range(len(list1)):
-            for j in range(len(list2)):
-                diff[i][j] = abs(list1[i] - list2[j])
+    def compute_exp(P, R):
+        n = P.shape[0]
+        ret_pos = np.zeros((n,))
+        ret_neg = np.zeros((n,))
+        for i in range(n):
+            probs, rewards = P[i], R[i]
+            pos, neg = rewards >= 0, rewards < 0
+            ret_pos[i] = np.dot(probs[pos], rewards[pos])
+            ret_neg[i] = np.dot(probs[neg], rewards[neg])
+        return ret_pos, ret_neg
+    expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
+    expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
+    def compute_diff(pos1, pos2, neg1, neg2):
+        diff = np.zeros((len(pos1), len(pos2)))
+        for i in range(len(pos1)):
+            for j in range(len(pos2)):
+                diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
         return diff
-    cached_reward_differences = compute_diff(expected_rewards1, expected_rewards2)
+    cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
     reward_diffs_id = ray.put(cached_reward_differences)
     actions1_id = ray.put(action_dists1)
     actions2_id = ray.put(action_dists2)
     out_S1_id = ray.put(out_neighbors_S1)
     out_S2_id = ray.put(out_neighbors_S2)
-
 
     if not self_similarity:
         action_pairs = np.array([np.float64((i, j)) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))

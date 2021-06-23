@@ -23,11 +23,12 @@ from collections import namedtuple
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
 
-    def __init__(self, P, R, out_s, out_a):
+    def __init__(self, P, R, out_s, out_a, available_actions):
         self.P = P.copy()
         self.R = R.copy()
         self.out_s = out_s.copy()
         self.out_a = out_a.copy()
+        self.available_actions = available_actions.copy()
 
     @classmethod
     def from_file(cls, path, reward=1, noops=True):
@@ -36,8 +37,8 @@ class MDPGraph:
 
     @classmethod
     def from_grid(cls, grid, success_prob, reward=1, noops=True):
-        P, R, out_s, out_a  = cls.grid_to_graph(grid, success_prob, reward=reward, noops=noops)
-        return cls(P, R, out_s, out_a)
+        P, R, out_s, out_a, available_actions  = cls.grid_to_graph(grid, success_prob, reward=reward, noops=noops)
+        return cls(P, R, out_s, out_a, available_actions)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
     @classmethod
@@ -46,6 +47,7 @@ class MDPGraph:
         row = state // width
         col = state - width*row
 
+        # left, right, up, down, no-op/stay
         moves = [None] * 5
         # no-op
         if noops:
@@ -81,15 +83,15 @@ class MDPGraph:
                                     [np.empty(shape=(0,), dtype=int) for i in range(num_states)]))
         out_neighbors_a = dict()
 
+        num_grid_actions = 5
         a_node = 0
-        out_a_info = {}
-        ActionInfo = namedtuple("ActionInfo", "states rel_states probs")
+        available_actions = np.zeros((num_states, num_grid_actions))
         for s in range(num_states):
             actions = cls.get_valid_adjacent(s, grid, noops)
+            available_actions[s, :] = [1 if a is not None else 0 for a in actions]
             filtered_actions = [a for a in actions if a is not None]
             # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
             #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
-
             for action in filtered_actions:
                 # each action a state can do creates an action node
                 out_neighbors_s[s] = np.append(out_neighbors_s[s], a_node)
@@ -122,10 +124,10 @@ class MDPGraph:
             for g in goal_states:
                 if P[i, g] > 0:
                     R[i, g] = reward
-        return P, R, out_neighbors_s, out_neighbors_a
+        return P, R, out_neighbors_s, out_neighbors_a, available_actions
     
     def copy(self):
-        return MDPGraph(self.P, self.R, self.out_s, self.out_a)
+        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions)
 
     # reorders the out-actions of the specified state
     # can apply different permutations within an MDP and/or between MDPs

@@ -15,7 +15,7 @@ FIG_OUT = 'pipeline_figures'
 def generate_graphs(sizes, success_prob=0.9, noops=False):
     return [gen.MDPGraph.from_grid(gen.create_grid(sz), success_prob, noops=noops) for sz in sizes]
 
-def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, ticks=None):
+def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, xticks=None, yticks=None):
     length = len(graphs)
     ret = np.zeros((length, length))
     idxs = [(i, j) for i, _ in enumerate(graphs) for j, _ in enumerate(graphs)]
@@ -27,16 +27,19 @@ def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, 
     else:
         for (i, j) in idxs:
             ret[i, j] = comp(i, j)
-    ax_heatmap = util.heatmap(ret, title=title, ticks=ticks)
+    ax_heatmap = util.heatmap(ret, title=title, xticks=xticks, yticks=yticks)
     if verify_metric:
-        metric = util.check_metric_properties(ret, graphs, PRECISION_CHECK)
+        metric = util.check_metric_properties(ret, graphs, decimals=PRECISION_CHECK, output=True)
         return ret, ax_heatmap, metric
     return ret, ax_heatmap
 
-def process_print_graphs(graphs, title, ticks):
+def process_print_graphs(graphs, title, ticks=None, xticks=None, yticks=None):
     print(f'\n{title}')
-    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, ticks=ticks)
-    print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
+    if ticks is not None:
+        xticks = ticks
+        yticks = ticks
+    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, xticks=xticks, yticks=yticks)
+    #print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
     print(np.triu(comp))
     plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{title.lower().replace(" ", "_")}.png')
     return comp, heatmap, metric
@@ -52,10 +55,23 @@ def shape_comparisons(line_sizes=None, grid_sizes=None):
     grids = generate_graphs(grid_shapes)
     lines_noops = generate_graphs(line_shapes, noops=True)
     grids_noops = generate_graphs(grid_shapes, noops=True)
-    process_print_graphs(lines, 'Line Similarities', [str(s[1]) for s in line_shapes])
-    process_print_graphs(grids, 'Grid Similarities', [str(s[1]) for s in grid_shapes])
-    process_print_graphs(lines_noops, 'Line with No-ops Similarities', [str(s[1]) for s in line_shapes])
-    process_print_graphs(grids_noops, 'Grid with No-ops Similarities', [str(s[1]) for s in grid_shapes])
+    process_print_graphs(lines, 'Line Similarities', ticks=[str(s[1]) for s in line_shapes])
+    process_print_graphs(grids, 'Grid Similarities', ticks=[str(s[1]) for s in grid_shapes])
+    process_print_graphs(lines_noops, 'Line with No-ops Similarities', ticks=[str(s[1]) for s in line_shapes])
+    process_print_graphs(grids_noops, 'Grid with No-ops Similarities', ticks=[str(s[1]) for s in grid_shapes])
+
+def success_prob_comparisons(grid_size=7, probs=None):
+    if probs is None:
+        probs = np.arange(0.1, 1.1, 0.1)
+    grid = gen.create_grid((grid_size, grid_size))
+    graphs = [gen.MDPGraph.from_grid(grid, prob, noops=False) for prob in probs]
+    process_print_graphs(graphs, f'Action Success Probabilities {grid_size}x{grid_size}', ticks=[f'{prob:.1f}' for prob in probs])
+
+def transition_prob_noise():
+    def add_noise(G, noise):
+        P = G.P
+
+    pass
 
 if __name__ == '__main__':
     plt.ion()
@@ -68,4 +84,4 @@ if __name__ == '__main__':
 
     # Main process
     shape_comparisons()
-    #plt.show()
+    success_prob_comparisons()

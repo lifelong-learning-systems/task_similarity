@@ -52,19 +52,23 @@ def check_metric_properties(comparisons, graphs, decimals=10, output=False):
     def output_print(x):
         if output:
             print(x)
+    # ensure symmetric
+    boundary = -10**-decimals
+    if np.abs(comparisons - comparisons.T).max() > abs(boundary):
+        output_print('Symmetry check failed')
+    else:
+        output_print('Symmetry check passed!')
     order = check_diffs(comparisons, precision_check)
     if not order:
         output_print('Order check failed')
-        return False
     else:
         output_print('Order check passed!')
     ans, counter = check_triangle_inequality(comparisons, precision_check)
     if not ans:
         output_print(f'Triangle inequality check ({precision_check} decimals) failed at: {counter}')
-        return False
     else:
         output_print(f'Triangle inequality check ({precision_check} decimals) passed!')
-    return True
+    return order, ans
     # shuffle = check_shuffled(comparisons, graphs, precision_check)
     # if not shuffle:
     #     print('Shuffle check failed')
@@ -72,13 +76,13 @@ def check_metric_properties(comparisons, graphs, decimals=10, output=False):
     #     print('Shuffle check passed!')
 
 # TODO: labels, ticks, & titles
-def heatmap(matrix, title=None, ticks=None, new_figure=True, flip_orientation=True, upper=True):
+def heatmap(matrix, title=None, xticks=None, yticks=None, new_figure=True, flip_orientation=True, upper=True):
     upper_mask = np.triu(matrix)
     lower_mask = np.tril(matrix)
     np.fill_diagonal(upper_mask, 0)
     if flip_orientation:
-        upper_mask = np.flipud(upper_mask)
-        lower_mask = np.flipud(lower_mask)
+        upper_mask = np.fliplr(upper_mask)
+        lower_mask = np.fliplr(lower_mask)
     if new_figure:
         plt.figure()
     keep = lower_mask
@@ -90,13 +94,13 @@ def heatmap(matrix, title=None, ticks=None, new_figure=True, flip_orientation=Tr
         ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
     if title is not None:
         ax.set_title(title)
-    if ticks is not None:
-        ax.set_xticklabels(ticks)
-        #ax.xaxis.tick_top()
-        ticks_y = np.array(ticks).copy()
+    if xticks is not None:
+        ax.set_xticklabels(xticks)
+    if yticks is not None:
+        yticks = np.array(yticks).copy()
         if flip_orientation:
-            ticks_y = np.flip(ticks_y)
-        ax.set_yticklabels(ticks_y)
+            yticks = np.flip(yticks)
+        ax.set_yticklabels(yticks)
     return ax
 
 # From Stackoverflow: https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
