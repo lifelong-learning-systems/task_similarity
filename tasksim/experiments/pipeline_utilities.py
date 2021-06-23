@@ -72,18 +72,31 @@ def check_metric_properties(comparisons, graphs, decimals=10, output=False):
     #     print('Shuffle check passed!')
 
 # TODO: labels, ticks, & titles
-def heatmap(matrix, title=None, ticks=None, new_figure=True):
-    upper_mat = np.triu(matrix)
+def heatmap(matrix, title=None, ticks=None, new_figure=True, flip_orientation=True, upper=True):
+    upper_mask = np.triu(matrix)
     lower_mask = np.tril(matrix)
-    np.fill_diagonal(lower_mask, 0)
+    np.fill_diagonal(upper_mask, 0)
+    if flip_orientation:
+        upper_mask = np.flipud(upper_mask)
+        lower_mask = np.flipud(lower_mask)
     if new_figure:
         plt.figure()
-    ax = sns.heatmap(1 - upper_mat, mask=lower_mask, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+    keep = lower_mask
+    mask = upper_mask
+    if upper:
+        ax = sns.heatmap(1 - keep, mask=mask, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+    else:
+        keep = np.flipud(matrix) if flip_orientation else matrix
+        ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
     if title is not None:
         ax.set_title(title)
     if ticks is not None:
         ax.set_xticklabels(ticks)
-        ax.set_yticklabels(ticks)
+        #ax.xaxis.tick_top()
+        ticks_y = np.array(ticks).copy()
+        if flip_orientation:
+            ticks_y = np.flip(ticks_y)
+        ax.set_yticklabels(ticks_y)
     return ax
 
 # From Stackoverflow: https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console

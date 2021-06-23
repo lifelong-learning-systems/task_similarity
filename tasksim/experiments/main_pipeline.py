@@ -33,29 +33,29 @@ def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, 
         return ret, ax_heatmap, metric
     return ret, ax_heatmap
 
+def process_print_graphs(graphs, title, ticks):
+    print(f'\n{title}')
+    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, ticks=ticks)
+    print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
+    print(np.triu(comp))
+    plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{title.lower().replace(" ", "_")}.png')
+    return comp, heatmap, metric
+
 def shape_comparisons(line_sizes=None, grid_sizes=None):
     if line_sizes is None:
         line_sizes = range(2, 12)
     if grid_sizes is None:
         grid_sizes = range(2, 12)
-    def process_and_print(graphs, shapes, header=''):
-        title = f'{header} Similarities: {shapes[0]} - {shapes[-1]}'
-        print(f'\n{title}')
-        comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, ticks=[str(s[1]) for s in shapes])
-        print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
-        print(np.triu(comp))
-        plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{header.lower().replace(" ", "_")}_similarities.png')
-        return comp, heatmap, metric
     line_shapes = [(1, i) for i in line_sizes]
     grid_shapes = [(i, i) for i in grid_sizes]
     lines = generate_graphs(line_shapes)
     grids = generate_graphs(grid_shapes)
     lines_noops = generate_graphs(line_shapes, noops=True)
     grids_noops = generate_graphs(grid_shapes, noops=True)
-    process_and_print(lines, line_shapes, 'Line')
-    process_and_print(grids, grid_shapes, 'Grid')
-    process_and_print(lines_noops, line_shapes, 'Line with No-ops')
-    process_and_print(grids_noops, grid_shapes, 'Grid with No-ops')
+    process_print_graphs(lines, 'Line Similarities', [str(s[1]) for s in line_shapes])
+    process_print_graphs(grids, 'Grid Similarities', [str(s[1]) for s in grid_shapes])
+    process_print_graphs(lines_noops, 'Line with No-ops Similarities', [str(s[1]) for s in line_shapes])
+    process_print_graphs(grids_noops, 'Grid with No-ops Similarities', [str(s[1]) for s in grid_shapes])
 
 if __name__ == '__main__':
     plt.ion()
