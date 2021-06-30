@@ -76,7 +76,7 @@ def check_metric_properties(comparisons, graphs, decimals=10, output=False):
     #     print('Shuffle check passed!')
 
 # TODO: labels, ticks, & titles
-def heatmap(matrix, title=None, xticks=None, yticks=None, new_figure=True, flip_orientation=True, upper=True):
+def heatmap(matrix, title=None, xticks=None, yticks=None, new_figure=True, flip_orientation=True, upper=True, standard_range=True):
     upper_mask = np.triu(matrix)
     lower_mask = np.tril(matrix)
     np.fill_diagonal(upper_mask, 0)
@@ -88,10 +88,16 @@ def heatmap(matrix, title=None, xticks=None, yticks=None, new_figure=True, flip_
     keep = lower_mask
     mask = upper_mask
     if upper:
-        ax = sns.heatmap(1 - keep, mask=mask, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+        if standard_range:
+            ax = sns.heatmap(1 - keep, mask=mask, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+        else:
+            ax = sns.heatmap(1 - keep, mask=mask, linewidth=0.5, cmap="rainbow")
     else:
         keep = np.flipud(matrix) if flip_orientation else matrix
-        ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+        if standard_range:
+            ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+        else:
+            ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow")
     if title is not None:
         ax.set_title(title)
     if xticks is not None:

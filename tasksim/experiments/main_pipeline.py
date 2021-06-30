@@ -1,5 +1,7 @@
+from scipy.sparse.construct import random
 from tasksim.experiments.pipeline_utilities import progress_bar
 import numpy as np
+from sklearn.preprocessing import normalize as sk_norm
 
 import tasksim
 from tasksim import MDPGraph
@@ -10,7 +12,7 @@ from matplotlib import pyplot as plt
 import pipeline_utilities as util
 
 PRECISION_CHECK = 10
-FIG_OUT = 'pipeline_figures'
+FIG_OUT = 'figures_baseline'
 
 def generate_graphs(sizes, success_prob=0.9, noops=False):
     return [gen.MDPGraph.from_grid(gen.create_grid(sz), success_prob, noops=noops) for sz in sizes]
@@ -67,11 +69,43 @@ def success_prob_comparisons(grid_size=7, probs=None):
     graphs = [gen.MDPGraph.from_grid(grid, prob, noops=False) for prob in probs]
     process_print_graphs(graphs, f'Action Success Probabilities {grid_size}x{grid_size}', ticks=[f'{prob:.1f}' for prob in probs])
 
-def transition_prob_noise():
-    def add_noise(G, noise):
+def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_state=None):
+    if random_state is None:
+        random_state = np.random
+    
+    def add_noise(G, percent):
+        G = G.copy()
         P = G.P
-
-    pass
+        out_a = G.out_a
+        n_actions, n_states = P.shape
+        for i in range(n_actions):
+            for j in range(n_states):
+                if P[i, j] <= 0:
+                    continue
+                # Between [0, 1)
+                noise = random_state.rand()
+                # Between [-percent, +percent)
+                z = -percent + 2*percent*noise
+                # TODO: scale by element or nah? Probably?
+                P[i, j] = max(0, P[i, j] + z)
+            normed_row = sk_norm(np.array([P[i]]), norm='l1')[0]
+            P[i, :] = normed_row
+            out_a[i] = normed_row.copy()
+        return G
+    grid = gen.create_grid((grid_size, grid_size))
+    base = gen.MDPGraph.from_grid(grid, success_prob, noops=False)
+    noise_levels = np.arange(0, 0.5, 0.05)
+    comparisons = np.zeros((trials, len(noise_levels)))
+    idxs = [(i, j, noise) for i in range(trials) for j, noise in enumerate(noise_levels)]
+    for (i, j, noise) in util.progress_bar(idxs, prefix='Progress:', suffix='Complete'):
+        graph = add_noise(base, noise)
+        comparisons[i, j] = base.compare2(graph) 
+    title = f'Transition Noise {grid_size}x{grid_size}, {success_prob}'
+    xticks = [f'{noise:.2f}' for noise in noise_levels]
+    yticks = [str(trial) for trial in range(1, 1+trials)]
+    heatmap = util.heatmap(comparisons, title=title, xticks=xticks, yticks=yticks, upper=False, standard_range=False)
+    print(comparisons)
+    plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{title.lower().replace(" ", "_")}.png')
 
 if __name__ == '__main__':
     plt.ion()
@@ -85,3 +119,8 @@ if __name__ == '__main__':
     # Main process
     shape_comparisons()
     success_prob_comparisons()
+    # Introduce some determinism
+    random_seed = 314159265
+    random_state = np.random.RandomState(random_seed)
+    transition_prob_noise(random_state=random_state)
+    transition_prob_noise(grid_size=3, random_state=random_state)

@@ -42,7 +42,7 @@ def compute_constant_limit(c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     #limit_a = C/(1 - A)
     return 1 - limit_s
 
-def final_score(S, c_n=0.9):
+def final_score(S, c_n=1.0):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
