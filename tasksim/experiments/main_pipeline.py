@@ -17,32 +17,34 @@ FIG_OUT = 'figures_baseline'
 def generate_graphs(sizes, success_prob=0.9, noops=False):
     return [gen.MDPGraph.from_grid(gen.create_grid(sz), success_prob, noops=noops) for sz in sizes]
 
-def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, xticks=None, yticks=None):
-    length = len(graphs)
-    ret = np.zeros((length, length))
-    idxs = [(i, j) for i, _ in enumerate(graphs) for j, _ in enumerate(graphs)]
+def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, xticks=None, yticks=None, upper=True, standard_range=True):
+    if np.array(graphs).ndim == 1:
+        graphs = [[(graphs[i], graphs[j]) for j in range(len(graphs))] for i in range(len(graphs))]
+    ret = np.zeros((len(graphs), len(graphs[0])))
+    idxs = [(i, j) for i in range(len(graphs)) for j in range(len(graphs[0]))]
     def comp(i, j):
-        return graphs[i].compare2(graphs[j])
+        g1, g2 = graphs[i][j]
+        return g1.compare2(g2)
     if print_progress:
         for (i, j) in util.progress_bar(idxs, prefix='Progress:', suffix='Complete'):
             ret[i, j] = comp(i, j)
     else:
         for (i, j) in idxs:
             ret[i, j] = comp(i, j)
-    ax_heatmap = util.heatmap(ret, title=title, xticks=xticks, yticks=yticks)
+    ax_heatmap = util.heatmap(ret, title=title, xticks=xticks, yticks=yticks, upper=upper, standard_range=standard_range)
     if verify_metric:
         metric = util.check_metric_properties(ret, graphs, decimals=PRECISION_CHECK, output=True)
         return ret, ax_heatmap, metric
     return ret, ax_heatmap
 
-def process_print_graphs(graphs, title, ticks=None, xticks=None, yticks=None):
+def process_print_graphs(graphs, title, ticks=None, xticks=None, yticks=None, upper=True, standard_range=True):
     print(f'\n{title}')
     if ticks is not None:
         xticks = ticks
         yticks = ticks
-    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, xticks=xticks, yticks=yticks)
+    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, xticks=xticks, yticks=yticks, upper=upper, standard_range=standard_range)
     #print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
-    print(np.triu(comp))
+    print(comp if not upper else np.triu(comp))
     plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{title.lower().replace(" ", "_")}.png')
     return comp, heatmap, metric
 
@@ -97,15 +99,11 @@ def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_stat
     noise_levels = np.arange(0, 0.5, 0.05)
     comparisons = np.zeros((trials, len(noise_levels)))
     idxs = [(i, j, noise) for i in range(trials) for j, noise in enumerate(noise_levels)]
-    for (i, j, noise) in util.progress_bar(idxs, prefix='Progress:', suffix='Complete'):
-        graph = add_noise(base, noise)
-        comparisons[i, j] = base.compare2(graph) 
+    graphs = [[(base, add_noise(base, noise)) for j, noise in enumerate(noise_levels)] for i in range(trials)]
     title = f'Transition Noise {grid_size}x{grid_size}, {success_prob}'
     xticks = [f'{noise:.2f}' for noise in noise_levels]
     yticks = [str(trial) for trial in range(1, 1+trials)]
-    heatmap = util.heatmap(comparisons, title=title, xticks=xticks, yticks=yticks, upper=False, standard_range=False)
-    print(comparisons)
-    plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{title.lower().replace(" ", "_")}.png')
+    process_print_graphs(graphs, title=title, xticks=xticks, yticks=yticks, upper=False, standard_range=False)
 
 if __name__ == '__main__':
     plt.ion()

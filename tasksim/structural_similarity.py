@@ -236,6 +236,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
     def compute_exp(P, R):
         n = P.shape[0]
+        # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
         ret_pos = np.zeros((n,))
         ret_neg = np.zeros((n,))
         for i in range(n):

@@ -27,12 +27,15 @@ class MDPGraphEnv(gym.Env):
         #  b. Should reward be associated with state? Reward is defined as (state, action, state') tuple in Wang paper; others are typically just (state, action) pairs (for deterministic MDPs)
         #     i. Easiest option: associate reward with state'; however you get there doesn't matter
         #     ii. TBD if needed
+        # 4. Should we do things regarding wrap-around? Like boundary conditions, edge discontinuity
     
+    # needs to know goal states, or just assume anything with reward 1 is a goal state? Yes.
     def step():
         pass
     # Where do we start on the grid? Random location? Upper-left? Parameter of reset()?
     # -> effectively an epsilon transition from an augmented start state node into the rest of the MDP Graph
     # TODO: should our metric encompass start state? A set of start states? TBD once we get some results
+    # Default: random, any non-goal state
     def reset(loc=None):
         pass
     def render():
