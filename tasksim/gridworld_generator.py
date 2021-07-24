@@ -122,7 +122,7 @@ class MDPGraph:
             filtered_actions = [a for a in actions if a is not None]
             # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
             #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
-            for action in filtered_actions:
+            for action_id, action in enumerate(filtered_actions):
                 # each action a state can do creates an action node
                 out_neighbors_s[s] = np.append(out_neighbors_s[s], a_node)
                 # action nodes initialized with zero transition prob to all other states
@@ -135,11 +135,11 @@ class MDPGraph:
                 else:
                     success = success_prob
                     fail = (1 - success_prob) / (len(filtered_actions) - 1)
-                for s_p in filtered_actions:
-                    if s_p == action:
-                        out_neighbors_a[a_node][s_p] = success
+                for s_p_id, s_p in enumerate(filtered_actions):
+                    if s_p_id == action_id:
+                        out_neighbors_a[a_node][s_p] += success
                     else:
-                        out_neighbors_a[a_node][s_p] = fail
+                        out_neighbors_a[a_node][s_p] += fail
                 states = np.array(filtered_actions, dtype=int) 
                 probs = np.array(out_neighbors_a[a_node][states])
                 prob_sorted = np.argsort(probs)
