@@ -23,6 +23,8 @@ from enum import Enum
 from collections import namedtuple
 
 # Strategy for available actions; k = # of actions at each state
+# TODO: allow for both action & effect at once? NOOP_BOTH & WRAP_NOOP_BOTH maybe...
+# TODO: make composable traits, rather than all combinations listed out...
 class ActionStrategy(Enum):
     SUBSET = 1 # default: 0 <= k <= 4
     NOOP_ACTION = 2 # all states have no-op action added: 1 <= k <= 5
@@ -34,12 +36,14 @@ class ActionStrategy(Enum):
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
 
-    def __init__(self, P, R, out_s, out_a, available_actions):
+    def __init__(self, P, R, out_s, out_a, available_actions, grid, strat):
         self.P = P.copy()
         self.R = R.copy()
         self.out_s = out_s.copy()
         self.out_a = out_a.copy()
         self.available_actions = available_actions.copy()
+        self.grid = grid.copy()
+        self.strat = strat
 
     @classmethod
     def from_file(cls, path, reward=1, strat=ActionStrategy.NOOP_ACTION):
@@ -49,7 +53,7 @@ class MDPGraph:
     @classmethod
     def from_grid(cls, grid, success_prob=0.9, reward=1, strat=ActionStrategy.NOOP_ACTION):
         P, R, out_s, out_a, available_actions  = cls.grid_to_graph(grid, success_prob, reward=reward, strat=strat)
-        return cls(P, R, out_s, out_a, available_actions)
+        return cls(P, R, out_s, out_a, available_actions, grid, strat)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
     @classmethod
@@ -157,7 +161,7 @@ class MDPGraph:
         return P, R, out_neighbors_s, out_neighbors_a, available_actions
     
     def copy(self):
-        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions)
+        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions, self.grid, self.strat)
 
     # reorders the out-actions of the specified state
     # can apply different permutations within an MDP and/or between MDPs
