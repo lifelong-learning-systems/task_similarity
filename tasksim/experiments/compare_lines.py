@@ -17,7 +17,7 @@ if __name__ == '__main__':
     np.set_printoptions(linewidth=200, precision=num_print_decimals, suppress=True)
     sizes = range(2, 12, 1)
     comparisons = np.zeros((len(sizes), len(sizes)))
-    graphs = [gen.MDPGraph.from_grid(gen.create_grid((1, x)), 0.9, noops=False) for x in sizes]
+    graphs = [gen.MDPGraph.from_grid(gen.create_grid((1, x)), 0.9, strat=gen.ActionStrategy.SUBSET) for x in sizes]
     for i, s1 in enumerate(sizes):
         for j, s2 in enumerate(sizes):
             print(i, j)

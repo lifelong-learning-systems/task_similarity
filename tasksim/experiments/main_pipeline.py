@@ -14,8 +14,8 @@ import pipeline_utilities as util
 PRECISION_CHECK = 10
 FIG_OUT = 'figures_baseline'
 
-def generate_graphs(sizes, success_prob=0.9, noops=False):
-    return [gen.MDPGraph.from_grid(gen.create_grid(sz), success_prob, noops=noops) for sz in sizes]
+def generate_graphs(sizes, success_prob=0.9, strat=gen.ActionStrategy.SUBSET):
+    return [gen.MDPGraph.from_grid(gen.create_grid(sz), success_prob, strat=strat) for sz in sizes]
 
 def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, xticks=None, yticks=None, upper=True, standard_range=True):
     if np.array(graphs).ndim == 1:
@@ -57,8 +57,8 @@ def shape_comparisons(line_sizes=None, grid_sizes=None):
     grid_shapes = [(i, i) for i in grid_sizes]
     lines = generate_graphs(line_shapes)
     grids = generate_graphs(grid_shapes)
-    lines_noops = generate_graphs(line_shapes, noops=True)
-    grids_noops = generate_graphs(grid_shapes, noops=True)
+    lines_noops = generate_graphs(line_shapes, noops=gen.ActionStrategy.NOOP_ACTION)
+    grids_noops = generate_graphs(grid_shapes, noops=gen.ActionStrategy.NOOP_ACTION)
     process_print_graphs(lines, 'Line Similarities', ticks=[str(s[1]) for s in line_shapes])
     process_print_graphs(grids, 'Grid Similarities', ticks=[str(s[1]) for s in grid_shapes])
     process_print_graphs(lines_noops, 'Line with No-ops Similarities', ticks=[str(s[1]) for s in line_shapes])
@@ -68,7 +68,7 @@ def success_prob_comparisons(grid_size=7, probs=None):
     if probs is None:
         probs = np.arange(0.1, 1.1, 0.1)
     grid = gen.create_grid((grid_size, grid_size))
-    graphs = [gen.MDPGraph.from_grid(grid, prob, noops=False) for prob in probs]
+    graphs = [gen.MDPGraph.from_grid(grid, prob, strat=gen.ActionStrategy.SUBSET) for prob in probs]
     process_print_graphs(graphs, f'Action Success Probabilities {grid_size}x{grid_size}', ticks=[f'{prob:.1f}' for prob in probs])
 
 def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_state=None):
@@ -95,7 +95,7 @@ def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_stat
             out_a[i] = normed_row.copy()
         return G
     grid = gen.create_grid((grid_size, grid_size))
-    base = gen.MDPGraph.from_grid(grid, success_prob, noops=False)
+    base = gen.MDPGraph.from_grid(grid, success_prob, strat=gen.ActionStrategy.SUBSET)
     noise_levels = np.arange(0, 0.5, 0.05)
     comparisons = np.zeros((trials, len(noise_levels)))
     idxs = [(i, j, noise) for i in range(trials) for j, noise in enumerate(noise_levels)]

@@ -18,7 +18,18 @@ from tasksim import DEFAULT_CA, DEFAULT_CS
 import argparse
 import time
 
+from enum import Enum
+
 from collections import namedtuple
+
+# Strategy for available actions; k = # of actions at each state
+class ActionStrategy(Enum):
+    SUBSET = 1 # default: 0 <= k <= 4
+    NOOP_ACTION = 2 # all states have no-op action added: 1 <= k <= 5
+    NOOP_EFFECT = 3 # all states have all actions available, some just function as noops: k = 4
+    WRAP_SUBSET = 4 # SUBSET, but wraparound at borders
+    WRAP_NOOP_ACTION = 5 # NOOP_ACTION, ""
+    WRAP_NOOP_EFFECT = 6 # NOOP_EFFECT, ""
 
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
@@ -31,46 +42,65 @@ class MDPGraph:
         self.available_actions = available_actions.copy()
 
     @classmethod
-    def from_file(cls, path, reward=1, noops=True):
+    def from_file(cls, path, reward=1, strat=ActionStrategy.NOOP_ACTION):
         grid, success_prob = parse_gridworld(path=path)
-        return cls.from_grid(grid, success_prob, reward=reward, noops=noops)
+        return cls.from_grid(grid, success_prob, reward=reward, strat=strat)
 
     @classmethod
-    def from_grid(cls, grid, success_prob, reward=1, noops=True):
-        P, R, out_s, out_a, available_actions  = cls.grid_to_graph(grid, success_prob, reward=reward, noops=noops)
+    def from_grid(cls, grid, success_prob=0.9, reward=1, strat=ActionStrategy.NOOP_ACTION):
+        P, R, out_s, out_a, available_actions  = cls.grid_to_graph(grid, success_prob, reward=reward, strat=strat)
         return cls(P, R, out_s, out_a, available_actions)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
     @classmethod
-    def get_valid_adjacent(cls, state, grid, noops):
+    def get_valid_adjacent(cls, state, grid, strat: ActionStrategy):
         height, width = grid.shape
         row = state // width
         col = state - width*row
 
         # left, right, up, down, no-op/stay
         moves = [None] * 5
-        # no-op
-        if noops:
+
+        # no-op action added?
+        if strat == ActionStrategy.NOOP_ACTION or strat == ActionStrategy.WRAP_NOOP_ACTION:
             moves[4] = state
+
+        # start wtih no-op effect for all actions
+        if strat == ActionStrategy.NOOP_EFFECT or strat == ActionStrategy.WRAP_NOOP_EFFECT:
+            moves[0] = moves[1] = moves[2] = moves[3] = state
+        
         # obstacles and goal states have no out neighbors (besides no-op)
         if grid[row][col] != 0:
             return moves
+        
+        # should wrap around or not
+        wrap = (strat in [ActionStrategy.WRAP_NOOP_EFFECT, ActionStrategy.WRAP_NOOP_ACTION, ActionStrategy.WRAP_SUBSET])
+
         # left
         if col > 0 and grid[row][col - 1] != 1:
             moves[0] = state - 1
+        elif wrap and col == 0 and grid[row][width - 1] != 1:
+            moves[0] = state + width - 1
         # right
         if col < width - 1 and grid[row][col + 1] != 1:
             moves[1] = state + 1
+        elif wrap and col == width - 1 and grid[row][0] != 1:
+            moves[1] = state - width + 1
         # up
         if row > 0 and grid[row - 1][col] != 1:
             moves[2] = state - width
+        elif wrap and row == 0 and grid[height - 1][col] != 1:
+            moves[2] = width * (height - 1) + col
         # down
         if row < height - 1 and grid[row + 1][col] != 1:
             moves[3] = state + width
+        elif wrap and row == height - 1 and grid[0][col] != 1:
+            moves[3] = col
+
         return moves
 
     @classmethod
-    def grid_to_graph(cls, grid, success_prob=0.9, reward=1, noops=True):
+    def grid_to_graph(cls, grid, success_prob=0.9, reward=1, strat=ActionStrategy.NOOP_ACTION):
         height, width = grid.shape
         goal_states = []
         for i in range(height):
@@ -87,7 +117,7 @@ class MDPGraph:
         a_node = 0
         available_actions = np.zeros((num_states, num_grid_actions))
         for s in range(num_states):
-            actions = cls.get_valid_adjacent(s, grid, noops)
+            actions = cls.get_valid_adjacent(s, grid, strat)
             available_actions[s, :] = [1 if a is not None else 0 for a in actions]
             filtered_actions = [a for a in actions if a is not None]
             # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
@@ -301,13 +331,13 @@ def compare_files2(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
 def compare_files2_norm(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return sim.normalize_score(compare_files2(file1, file2, c_a, c_s), c_a, c_s)
 
-def compare_shapes(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, noops=True):
-    return compare_graphs(MDPGraph.from_grid(create_grid(shape1), success_prob1, noops=noops), \
-                          MDPGraph.from_grid(create_grid(shape2), success_prob2, noops=noops), c_a=c_a, c_s=c_s)
-def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, noops=True):
-    return sim.final_score(compare_shapes(shape1, shape2, success_prob1, success_prob2, c_a, c_s, noops=noops))
-def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, noops=True):
-    return sim.normalize_score(compare_shapes2(shape1, shape2, success_prob1, success_prob2, c_a, c_s, noops=noops), c_a, c_s)
+def compare_shapes(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, strat=ActionStrategy.NOOP_ACTION):
+    return compare_graphs(MDPGraph.from_grid(create_grid(shape1), success_prob1, strat=strat), \
+                          MDPGraph.from_grid(create_grid(shape2), success_prob2, strat=strat), c_a=c_a, c_s=c_s)
+def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, strat=ActionStrategy.NOOP_ACTION):
+    return sim.final_score(compare_shapes(shape1, shape2, success_prob1, success_prob2, c_a, c_s, strat=strat))
+def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, strat=ActionStrategy.NOOP_ACTION):
+    return sim.normalize_score(compare_shapes2(shape1, shape2, success_prob1, success_prob2, c_a, c_s, strat=strat), c_a, c_s)
 
 # between two grids
 def compare_grid_symmetry(a, b, done=False):
