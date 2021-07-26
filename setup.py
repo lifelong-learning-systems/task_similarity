@@ -45,7 +45,9 @@ setup(
         'numba',
         'ray',
         'ray[default]',
-        'gym'
+        'gym',
+        'torch',
+        'ray[rllib]'
     ],
     zip_safe=False,
 )

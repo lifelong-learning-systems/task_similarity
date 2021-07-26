@@ -23,7 +23,7 @@ class MDPGraphEnv(gym.Env):
         self.height, self.width = self.grid.shape
         # TODO: change dtype?
         # 0 = normal, 1 = obstacle, 2 = goal state, 3 = current location
-        self.observation_space = spaces.Box(low=0, high=3, shape=(self.height, self.width), dtype=int)
+        self.observation_space = spaces.Box(low=0, high=3, shape=(self.height, self.width), dtype=np.uint8)
 
     # Where do we start on the grid? Random location? Upper-left? Parameter of reset()?
     # -> effectively an epsilon transition from an augmented start state node into the rest of the MDP Graph
