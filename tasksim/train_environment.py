@@ -2,6 +2,8 @@ from ray import tune
 import gym, ray
 from ray.rllib.agents import ppo
 from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.agents import dqn
+from ray.rllib.agents.dqn import DQNTrainer
 from ray.tune.registry import register_env
 import tasksim
 from tasksim.environment import MDPGraphEnv
@@ -18,6 +20,8 @@ RANDOM_SEED = 41239678
 RANDOM_STATE = np.random.RandomState(RANDOM_SEED)
 GRID = gen.create_grid((10, 10), obstacle_prob=0.2, random_state=RANDOM_STATE)
 G = gen.MDPGraph.from_grid(GRID, strat=gen.ActionStrategy.WRAP_NOOP_EFFECT)
+# TODO: randomize? Add noise later?
+G.R[G.R != 1] = -0.001
 ENV = MDPGraphEnv(G)
 
 def env_creator(_):
@@ -31,12 +35,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', help='test specified checkpoint')
     parser.add_argument('--iters', default=100, help='number of iters to train')
+    parser.add_argument('--algo', default='ppo', choices=['ppo', 'dqn'], help='which algorithm to train with')
     args = parser.parse_args()
     train = args.test is None
     iters = int(args.iters)
+    algo = ppo if args.algo == 'ppo' else dqn
+    algo_trainer = PPOTrainer if args.algo == 'ppo' else DQNTrainer
     register_env("gridworld", env_creator)
 
-    config = ppo.DEFAULT_CONFIG.copy()
+    config = algo.DEFAULT_CONFIG.copy()
     print(config)
     config.update({"env": "gridworld",
             'env_config':{'visualize':False},
@@ -53,22 +60,28 @@ if __name__ == '__main__':
 
 
     if train:
-        tune.run(PPOTrainer, config=config,
-                checkpoint_freq = 1,
+        tune.run(algo_trainer, config=config,
+                checkpoint_freq = 10,
                 name="gridworld",
                 stop={'training_iteration': iters}
         ) 
     else:
         ray.init()
-        agent = ppo.PPOTrainer(config=config, env='gridworld')
+        agent = algo_trainer(config=config, env='gridworld')
         agent.restore(args.test)
 
-        import code; code.interact(local=vars())
         done = False
         ep_reward = 0
         obs = ENV.reset()
+        print(obs)
+        step_count = 0
         while not done:
+                step_count += 1
                 action = agent.compute_action(obs)
+                print(action)
                 obs, reward, done, _ = ENV.step(action)
+                print(obs)
                 ep_reward += reward
+        print(obs, ep_reward, step_count)
+        import code; code.interact(local=vars())
 
