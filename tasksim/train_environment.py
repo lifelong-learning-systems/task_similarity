@@ -116,18 +116,6 @@ class EnvironmentBuilder:
     def coalesce_random(self, random_state=None):
         return np.random if random_state is None else random_state
 
-RANDOM_SEED = 41239678
-RANDOM_STATE = np.random.RandomState(RANDOM_SEED)
-# GRID = gen.create_grid((15, 15), obstacle_prob=0.2, random_state=RANDOM_STATE)
-# G = gen.MDPGraph.from_grid(GRID, strat=gen.ActionStrategy.WRAP_NOOP_EFFECT)
-# # TODO: randomize? Add noise later?
-# G.R[G.R != 1] = -0.001
-# ENV = MDPGraphEnv(G, obs_size=3)
-ENV = EnvironmentBuilder((15, 15)).set_obstacles(obstacle_prob=0.2, obstacle_random_state=RANDOM_STATE).build()
-
-def env_creator(_):
-    return ENV # return an env instance
-
 # return mean, std, list and such
 def test_env(env: MDPGraphEnv, agent):
     total_steps = 0
@@ -172,6 +160,15 @@ if __name__ == '__main__':
     last = args.last
     algo = ppo if args.algo == 'ppo' else dqn
     algo_trainer = PPOTrainer if args.algo == 'ppo' else DQNTrainer
+
+    RANDOM_SEED = 41239678
+    RANDOM_STATE = np.random.RandomState(RANDOM_SEED)
+    ENV = EnvironmentBuilder((15, 15)) \
+            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=RANDOM_STATE) \
+            .set_step_reward(-0.001) \
+            .build()
+    def env_creator(_):
+        return ENV
     register_env("gridworld", env_creator)
 
     if last:
