@@ -15,7 +15,11 @@ from sklearn.preprocessing import normalize as sk_norm
 import argparse
 import os
 import sys
+from collections import deque
+from copy import deepcopy
+import json
 
+from experiments.pipeline_utilities import progress_bar
 
 class EnvironmentBuilder:
     def __init__(self, shape):
@@ -108,7 +112,7 @@ class EnvironmentBuilder:
     def row_col(self, state):
         _, width = self.grid.shape
         row = state // width
-        col = state - self.width*row
+        col = state - width*row
         return row, col
     def flatten(self, row, col):
         _, width = self.grid.shape
@@ -117,65 +121,209 @@ class EnvironmentBuilder:
         return np.random if random_state is None else random_state
 
 # return mean, std, list and such
-def test_env(env: MDPGraphEnv, agent):
-    total_steps = 0
-    total_reward = 0
-    total_eps = 0
-    grid = env.grid
+def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=2500, lstm=False, sim_random_state=None):
+    strat = env.graph.strat
+    graph = env.graph
+    grid = graph.grid
     rows, cols = grid.shape
+    height, width = grid.shape
+    optimal_action_grid = np.nan * np.zeros(graph.grid.shape)
+    sim_random_state = np.random if sim_random_state is None else sim_random_state
+
+    def compute_optimal_path(start_state):
+        graph = env.graph
+        grid = graph.grid
+        q = deque() # q.append(x) -> pushes on to the right side, q.popleft() -> removes and returns from left
+        q.append((start_state, []))
+        found = None
+        visited = set()
+        while len(q):
+            cur_state, cur_path = q.popleft()
+            if cur_state in visited:
+                continue
+            visited.add(cur_state)
+            # left, right, up, down, noop
+            adjacent = gen.MDPGraph.get_valid_adjacent(cur_state, grid, strat)
+            filtered = [a for a in adjacent if a is not None]
+            out_actions = graph.out_s[cur_state]
+            assert len(out_actions) == len(filtered), 'darn, something went wrong'
+            for id, f in enumerate(filtered):
+                if f == cur_state:
+                    continue
+                looped = False
+                for path_state, _ in cur_path:
+                    if path_state == f:
+                        looped = True
+                        break
+                if looped:
+                    continue
+                action = out_actions[id]
+                row = f // width
+                col = f - width*row
+                next_path = [c for c in cur_path]
+                next_path.append((cur_state, action))
+                if grid[row, col] == 2:
+                    found = (f, next_path)
+                    break
+                else:
+                    q.append((f, next_path))
+            if found is not None:
+                break
+        assert found is not None, 'Could not find a path from start state to a goal'
+        _, goal_path = found
+        # goal_path is an optimal deterministic path from start_state to a goal_state
+        # graph.P: Actions - Distribution among States
+        for state, action in goal_path:
+            row = state // width
+            col = state - width*row
+            entry = optimal_action_grid[row, col]
+            if np.isnan(entry):
+                optimal_action_grid[row, col] = action
+            elif entry != action:
+                print('WARNING: found mismatched optimal entry???')
+                continue
+
+    # 1. for every valid grid state, figure out the optimal action to take
     for i in range(rows):
         for j in range(cols):
-            grid_entry = grid[i, j]
-            if grid_entry != 0:
+            if grid[i, j] != 0:
                 continue
-            total_eps += 1
-            obs = env.reset(i*cols + j)
-            done = False
-            ep_reward = 0
+            compute_optimal_path(i*cols + j)
+
+    cached_optimal_steps = {}
+    for i in range(rows):
+        for j in range(cols):
+            if grid[i, j] != 0:
+                continue
+            base_state = i*cols + j
+            sim_steps = 0
+            for _ in range(num_sims):
+                cur_state = base_state
+                done = False
+                while True:
+                    row = cur_state // width
+                    col = cur_state - width*row
+                    if grid[row, col] == 2:
+                        break
+                    optimal_action = optimal_action_grid[row, col]
+                    assert not np.isnan(optimal_action), 'No action found'
+                    transitions = graph.P[int(optimal_action)]
+                    indices = np.array([i for i in range(len(transitions))])
+                    cur_state = sim_random_state.choice(indices, p=transitions)
+                    sim_steps += 1
+            sim_avg = sim_steps / num_sims
+            cached_optimal_steps[base_state] = sim_avg
+    performances = []
+    episodes = list(range(n))
+    optimal_step_list = []
+    for _ in progress_bar(episodes, prefix='Test progress:', suffix='Complete'):
+        obs = env.reset()
+        optimal_steps = cached_optimal_steps[env.state]
+        optimal_step_list.append(optimal_steps)
+
+        done = False
+        ep_reward = 0
+        if lstm:
             state = agent.get_policy().model.get_initial_state()
-            step_count = 0
-            while not done:
-                step_count += 1
-                # TODO: is this stochastic? Can we make it determinstic?
+        step_count = 0
+        while not done:
+            step_count += 1
+            if step_count >= agent_max_step:
+                break
+            # TODO: is this stochastic? Can we make it determinstic?
+            if lstm:
                 action, state, _ = agent.compute_action(observation=obs, prev_action=0, prev_reward=0, state=state)
-                obs, reward, done, _ = env.step(action)
-                ep_reward += reward
-            total_steps += step_count
-            total_reward += ep_reward
-    return total_steps/total_eps, total_reward/total_eps
+            else:
+                action = agent.compute_action(obs)
+            obs, reward, done, _ = env.step(action)
+            ep_reward += reward
+        performance = optimal_steps / step_count # ???
+        performances.append(performance)
+    mean_performance = np.mean(performances)
+    return mean_performance, np.mean(optimal_step_list)
 
 # TODO:
 # - small negative rewards, when reward is 0?
 # - random variation/noise of transition probs
 
+def create_envs():
+    envs = []
+    base_seed = 41239678
+    transition_seed = 94619456
+    # ENV 0
+    base_env = EnvironmentBuilder((15, 15)) \
+            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
+            .set_step_reward(-0.001) \
+            .set_obs_size(3) \
+            .build()
+    envs.append(base_env)
+
+    # ENV 1
+    noisy_env = EnvironmentBuilder((15, 15)) \
+            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
+            .set_step_reward(-0.001) \
+            .set_obs_size(3) \
+            .set_transition_noise(0.35) \
+            .build(transition_random_state=np.random.RandomState(transition_seed))
+    envs.append(noisy_env)
+
+    # ENV 2
+    small_env = EnvironmentBuilder((11, 11)) \
+            .set_obstacles(obstacle_prob=0.1, obstacle_random_state=np.random.RandomState(base_seed)) \
+            .set_step_reward(-0.001) \
+            .set_obs_size(3) \
+            .build()
+    envs.append(small_env)
+
+    # ENV 3
+    goal_change_env = EnvironmentBuilder((15, 15)) \
+            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
+            .set_step_reward(-0.001) \
+            .set_obs_size(3) \
+            .set_goals([15*13+13]) \
+            .build()
+    envs.append(goal_change_env)
+
+    # ENV 4
+    multi_goal_env = EnvironmentBuilder((15, 15)) \
+            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
+            .set_step_reward(-0.001) \
+            .set_obs_size(3) \
+            .set_goals([15*7+7, 15*13+13, 15*1+1, 15*13+1, 15*1+13]) \
+            .build()
+    envs.append(multi_goal_env)
+
+    return envs
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', help='test specified checkpoint')
+    parser.add_argument('--paths', default='agent_paths.json', help='meta folder for saving/restoring agents')
     parser.add_argument('--last', help='use last training session to resume training [NOT SUPPORTED] or test', action='store_true')
-    parser.add_argument('--iters', default=100, help='number of iters to train')
+    parser.add_argument('--iters', default=10000, help='number of iters to train')
+    parser.add_argument('--env', default=0, help='which env id to use')
     parser.add_argument('--algo', default='ppo', choices=['ppo', 'dqn'], help='which algorithm to train with')
     args = parser.parse_args()
     train = args.test is None
     iters = int(args.iters)
     last = args.last
+    agent_paths = args.paths
     algo = ppo if args.algo == 'ppo' else dqn
+    env_id = int(args.env)
     algo_trainer = PPOTrainer if args.algo == 'ppo' else DQNTrainer
 
-    RANDOM_SEED = 41239678
-    RANDOM_STATE = np.random.RandomState(RANDOM_SEED)
-    ENV = EnvironmentBuilder((15, 15)) \
-            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=RANDOM_STATE) \
-            .set_step_reward(-0.001) \
-            .build()
-    def env_creator(_):
-        return ENV
+    envs = create_envs()
+    def env_creator(config):
+        return envs[config['env_id']]
     register_env("gridworld", env_creator)
 
     if last:
         base_dir = os.path.expanduser('~/ray_results/gridworld')
         def latest_file(path, dir=True):
             files = [os.path.join(path, f) for f in os.listdir(path)]
-            return max([f for f in files if (os.path.isdir(f) if dir else os.path.isfile(f))], key=os.path.getctime)
+            dirs = [f for f in files if (os.path.isdir(f) if dir else os.path.isfile(f))]
+            dirs.sort(key=os.path.getctime)
+            return dirs[-1]
         latest_run = latest_file(base_dir)
         latest_checkpoint_dir = latest_file(latest_run)
         latest_checkpoint_files = [f for f in os.listdir(latest_checkpoint_dir) if 'checkpoint-' in f and '.' not in f]
@@ -183,40 +331,70 @@ if __name__ == '__main__':
         last_path = os.path.join(latest_checkpoint_dir, latest_checkpoint_files[0])
     
     config = algo.DEFAULT_CONFIG.copy()
-    print(config)
     config.update({"env": "gridworld",
-            'env_config':{'visualize':False},
-            # "callbacks": {
-            #     "on_train_result": on_train_result,
-            # },
+                   'env_config':{'env_id': env_id},
+                   'framework':'torch',
+                   "num_workers": 4,
+                   'model': {"use_lstm": False}})
+    print(config)
 
-            'framework':'torch',
-            "num_workers": 8,
-            'model': {
-                    #TODO: consider turning to True
-                    "use_lstm": True,
-            }
-            })
-
+    def trial_name_string(trial, config):
+        return str(trial) + f'_env_{config["env_config"]["env_id"]}'
 
     if train:
         results = tune.run(algo_trainer, config=config,
-                checkpoint_freq = 10,
+                checkpoint_freq = 1,
                 name="gridworld",
+                trial_name_creator=lambda trial: trial_name_string(trial, config),
                 # TODO: use stopping condition of episodes_total for transfer learning?
-                stop={'training_iteration': iters}
+                #stop={'training_iteration': iters}
+                stop={'episodes_total': iters}
         ) 
         metric='training_iteration'
         mode='max'
         path = results.get_best_checkpoint(results.get_best_logdir(metric, mode), metric, mode)
+        # TODO: change save path? For easy access, e.g. env_id + algo + config? idk: Maybe key value, like "env_id-algo:<path>"
         print(path)
+        if os.path.exists(agent_paths):
+            with open(agent_paths, 'r') as f:
+                path_obj = json.load(f)
+        else:
+            path_obj = {}
+        path_obj[str(env_id)] = path
+        with open(agent_paths, 'w') as f:
+            json.dump(path_obj, f)
     else:
         ray.init()
-        agent = algo_trainer(config=config, env='gridworld')
-        restore_path = args.test if not last else last_path
-        print('Restoring from', restore_path)
-        agent.restore(args.test if not last else last_path)
+        if os.path.exists(agent_paths) and not last and not os.path.exists(args.test):
+            with open(agent_paths, 'r') as f:
+                path_obj = json.load(f)
+            env_jumpstart_perfs = np.zeros((len(path_obj), len(path_obj)))
+            env_optimal_steps = np.zeros((len(path_obj), len(path_obj)))
+            test_sim_seed = 123967763
+            test_env_seed = 897612344
+            for i, path in path_obj.items():
+                i = int(i)
+                agent = algo_trainer(config=config, env='gridworld')
+                agent.restore(path)
+                for j, _ in path_obj.items():
+                    j = int(j)
+                    env = envs[j].copy()
+                    env.random_state = np.random.RandomState(test_env_seed)
+                    # TODO: change n to reasonable number: 1000? change num_sims?
+                    perf, steps = test_env(env, agent, sim_random_state=np.random.RandomState(test_sim_seed))
+                    print(perf, steps)
+                    # i, j means agent i in environment j
+                    env_jumpstart_perfs[i, j] = perf
+                    env_optimal_steps[i, j] = steps
+            import code; code.interact(local=vars())
+        else:
+            agent = algo_trainer(config=config, env='gridworld')
+            restore_path = args.test if not last else last_path
+            print('Restoring from', restore_path)
+            agent.restore(args.test if not last else last_path)
 
-        print(test_env(ENV, agent))
-        import code; code.interact(local=vars())
+            print('Testing restored agent..')
+            import code; code.interact(local=vars())
+            perf = test_env(envs[env_id], agent, n=100)
+            print(perf)
 

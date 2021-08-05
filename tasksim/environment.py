@@ -92,6 +92,10 @@ class MDPGraphEnv(gym.Env):
 
     def render(self):
         print(self.gen_obs())
+    
+    def copy(self):
+        G = self.graph.copy()
+        return MDPGraphEnv(G, obs_size=self.obs_size, random_state=self.random_state)
 
     def row_col(self, state):
         row = state // self.width
