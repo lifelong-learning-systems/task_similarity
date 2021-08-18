@@ -130,6 +130,7 @@ def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=1000,
     rows, cols = grid.shape
     height, width = grid.shape
     optimal_action_grid = np.nan * np.zeros(graph.grid.shape)
+    optimal_path_len = np.zeros(graph.grid.shape)
     sim_random_state = np.random if sim_random_state is None else sim_random_state
 
     def compute_optimal_path(start_state):
@@ -184,44 +185,47 @@ def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=1000,
             elif entry != action:
                 print('WARNING: found mismatched optimal entry???')
                 continue
+        return len(goal_path)
 
     # 1. for every valid grid state, figure out the optimal action to take
     for i in range(rows):
         for j in range(cols):
             if grid[i, j] != 0:
                 continue
-            compute_optimal_path(i*cols + j)
+            path_len = compute_optimal_path(i*cols + j)
+            optimal_path_len[i, j] = path_len
 
-    cached_optimal_steps = {}
-    for i in range(rows):
-        for j in range(cols):
-            if grid[i, j] != 0:
-                continue
-            base_state = i*cols + j
-            sim_steps = 0
-            for _ in range(num_sims):
-                cur_state = base_state
-                done = False
-                while True:
-                    row = cur_state // width
-                    col = cur_state - width*row
-                    if grid[row, col] == 2:
-                        break
-                    optimal_action = optimal_action_grid[row, col]
-                    assert not np.isnan(optimal_action), 'No action found'
-                    transitions = graph.P[int(optimal_action)]
-                    indices = np.array([i for i in range(len(transitions))])
-                    cur_state = sim_random_state.choice(indices, p=transitions)
-                    sim_steps += 1
-            sim_avg = sim_steps / num_sims
-            cached_optimal_steps[base_state] = sim_avg
+    # cached_optimal_steps = {}
+    # for i in range(rows):
+    #     for j in range(cols):
+    #         if grid[i, j] != 0:
+    #             continue
+    #         base_state = i*cols + j
+    #         sim_steps = 0
+    #         for _ in range(num_sims):
+    #             cur_state = base_state
+    #             done = False
+    #             while True:
+    #                 row = cur_state // width
+    #                 col = cur_state - width*row
+    #                 if grid[row, col] == 2:
+    #                     break
+    #                 optimal_action = optimal_action_grid[row, col]
+    #                 assert not np.isnan(optimal_action), 'No action found'
+    #                 transitions = graph.P[int(optimal_action)]
+    #                 indices = np.array([i for i in range(len(transitions))])
+    #                 cur_state = sim_random_state.choice(indices, p=transitions)
+    #                 sim_steps += 1
+    #         sim_avg = sim_steps / num_sims
+    #         cached_optimal_steps[base_state] = sim_avg
     performances = []
     episodes = list(range(n))
     optimal_step_list = []
     agent_step_list = []
+    optimal_path_len = optimal_path_len.flatten()
     for _ in progress_bar(episodes, prefix='Test progress:', suffix='Complete'):
         obs = env.reset()
-        optimal_steps = cached_optimal_steps[env.state]
+        optimal_steps = optimal_path_len[env.state]
         optimal_step_list.append(optimal_steps)
 
         done = False
