@@ -1,5 +1,6 @@
 from ray import tune
 import gym, ray
+from gym import spaces
 from ray.rllib.agents import ppo
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.agents import dqn
@@ -18,6 +19,7 @@ import sys
 from collections import deque
 from copy import deepcopy
 import json
+from datetime import datetime
 
 from experiments.pipeline_utilities import progress_bar
 
@@ -121,7 +123,7 @@ class EnvironmentBuilder:
         return np.random if random_state is None else random_state
 
 # return mean, std, list and such
-def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=2500, lstm=False, sim_random_state=None):
+def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=1000, lstm=False, sim_random_state=None):
     strat = env.graph.strat
     graph = env.graph
     grid = graph.grid
@@ -216,6 +218,7 @@ def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=2500,
     performances = []
     episodes = list(range(n))
     optimal_step_list = []
+    agent_step_list = []
     for _ in progress_bar(episodes, prefix='Test progress:', suffix='Complete'):
         obs = env.reset()
         optimal_steps = cached_optimal_steps[env.state]
@@ -223,6 +226,8 @@ def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=2500,
 
         done = False
         ep_reward = 0
+        reward = 0
+        action = 0
         if lstm:
             state = agent.get_policy().model.get_initial_state()
         step_count = 0
@@ -232,15 +237,16 @@ def test_env(env: MDPGraphEnv, agent, n=1000, num_sims=100, agent_max_step=2500,
                 break
             # TODO: is this stochastic? Can we make it determinstic?
             if lstm:
-                action, state, _ = agent.compute_action(observation=obs, prev_action=0, prev_reward=0, state=state)
+                action, state, _ = agent.compute_action(observation=obs, prev_action=action, prev_reward=reward, state=state)
             else:
                 action = agent.compute_action(obs)
             obs, reward, done, _ = env.step(action)
             ep_reward += reward
-        performance = optimal_steps / step_count # ???
+        agent_step_list.append(step_count)
+        performance = optimal_steps / step_count if done else 0
         performances.append(performance)
     mean_performance = np.mean(performances)
-    return mean_performance, np.mean(optimal_step_list)
+    return mean_performance, np.mean(optimal_step_list), np.mean(agent_step_list)
 
 # TODO:
 # - small negative rewards, when reward is 0?
@@ -250,11 +256,12 @@ def create_envs():
     envs = []
     base_seed = 41239678
     transition_seed = 94619456
+    OBS_SIZE = 17
     # ENV 0
     base_env = EnvironmentBuilder((15, 15)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(3) \
+            .set_obs_size(OBS_SIZE) \
             .build()
     envs.append(base_env)
 
@@ -262,7 +269,7 @@ def create_envs():
     noisy_env = EnvironmentBuilder((15, 15)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(3) \
+            .set_obs_size(OBS_SIZE) \
             .set_transition_noise(0.35) \
             .build(transition_random_state=np.random.RandomState(transition_seed))
     envs.append(noisy_env)
@@ -271,7 +278,7 @@ def create_envs():
     small_env = EnvironmentBuilder((11, 11)) \
             .set_obstacles(obstacle_prob=0.1, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(3) \
+            .set_obs_size(OBS_SIZE) \
             .build()
     envs.append(small_env)
 
@@ -279,7 +286,7 @@ def create_envs():
     goal_change_env = EnvironmentBuilder((15, 15)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(3) \
+            .set_obs_size(OBS_SIZE) \
             .set_goals([15*13+13]) \
             .build()
     envs.append(goal_change_env)
@@ -288,7 +295,7 @@ def create_envs():
     multi_goal_env = EnvironmentBuilder((15, 15)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(3) \
+            .set_obs_size(OBS_SIZE) \
             .set_goals([15*7+7, 15*13+13, 15*1+1, 15*13+1, 15*1+13]) \
             .build()
     envs.append(multi_goal_env)
@@ -297,21 +304,26 @@ def create_envs():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--test', help='test specified checkpoint')
-    parser.add_argument('--paths', default='agent_paths.json', help='meta folder for saving/restoring agents')
+    parser.add_argument('--test', help='test instead of train the specified paths', action='store_true')
+    parser.add_argument('--paths', default='agent_paths/ppo_3x3.json', help='meta folder for saving/restoring agents')
     parser.add_argument('--last', help='use last training session to resume training [NOT SUPPORTED] or test', action='store_true')
+    parser.add_argument('--lstm', help='use lstm', action='store_true')
     parser.add_argument('--iters', default=10000, help='number of iters to train')
     parser.add_argument('--env', default=0, help='which env id to use')
+    #parser.add_argument('--obs', default=3, help='observation size')
     parser.add_argument('--algo', default='ppo', choices=['ppo', 'dqn'], help='which algorithm to train with')
     args = parser.parse_args()
-    train = args.test is None
+    train = not args.test
     iters = int(args.iters)
     last = args.last
+    lstm = args.lstm
     agent_paths = args.paths
     algo = ppo if args.algo == 'ppo' else dqn
     env_id = int(args.env)
+    #env_obs_size = int(args.obs)
     algo_trainer = PPOTrainer if args.algo == 'ppo' else DQNTrainer
 
+    # TODO: pass in obs_size here maybe
     envs = create_envs()
     def env_creator(config):
         return envs[config['env_id']]
@@ -331,15 +343,29 @@ if __name__ == '__main__':
         last_path = os.path.join(latest_checkpoint_dir, latest_checkpoint_files[0])
     
     config = algo.DEFAULT_CONFIG.copy()
+    # for env in envs:
+    #     env.obs_size = env_obs_size
+    #     env.observation_space = spaces.Box(low=0, high=4, shape=(env_obs_size, env_obs_size), dtype=np.uint8)
+    env_obs_size = envs[env_id].obs_size
+    obs_size_str = f'{env_obs_size}x{env_obs_size}'
     config.update({"env": "gridworld",
-                   'env_config':{'env_id': env_id},
+                   'env_config':{'env_id': env_id, 'trial_name': f'{args.algo.upper()}_{"" if not lstm else "lstm_"}{obs_size_str}_gridworld_env-{env_id}'},
                    'framework':'torch',
-                   "num_workers": 4,
-                   'model': {"use_lstm": False}})
+                   "num_workers": 8,
+                   'model': {"use_lstm": lstm}})
+    if algo == dqn:
+        learning_start = 10000
+        config.update({
+            'learning_starts': learning_start,
+            'timesteps_per_iteration': learning_start,
+            #'replay_sequence_length': 1,
+            #'prioritized_replay': False
+        })
+        config['exploration_config']['epsilon_timesteps'] = learning_start*10
     print(config)
 
-    def trial_name_string(trial, config):
-        return str(trial) + f'_env_{config["env_config"]["env_id"]}'
+    def trial_name_string(_, config):
+        return config['env_config']['trial_name']
 
     if train:
         results = tune.run(algo_trainer, config=config,
@@ -354,6 +380,7 @@ if __name__ == '__main__':
         mode='max'
         path = results.get_best_checkpoint(results.get_best_logdir(metric, mode), metric, mode)
         # TODO: change save path? For easy access, e.g. env_id + algo + config? idk: Maybe key value, like "env_id-algo:<path>"
+        # TODO: save training config as well? Save obs_size and LSTM or not at least...algo as well too
         print(path)
         if os.path.exists(agent_paths):
             with open(agent_paths, 'r') as f:
@@ -365,27 +392,37 @@ if __name__ == '__main__':
             json.dump(path_obj, f)
     else:
         ray.init()
-        if os.path.exists(agent_paths) and not last and not os.path.exists(args.test):
+        if os.path.exists(agent_paths) and not last:
             with open(agent_paths, 'r') as f:
                 path_obj = json.load(f)
             env_jumpstart_perfs = np.zeros((len(path_obj), len(path_obj)))
             env_optimal_steps = np.zeros((len(path_obj), len(path_obj)))
+            env_agent_steps = np.zeros((len(path_obj), len(path_obj)))
+            task_sim_scores = np.zeros((len(path_obj), len(path_obj)))
             test_sim_seed = 123967763
             test_env_seed = 897612344
+            config.update({
+                'num_workers': 1
+            })
             for i, path in path_obj.items():
                 i = int(i)
                 agent = algo_trainer(config=config, env='gridworld')
                 agent.restore(path)
                 for j, _ in path_obj.items():
                     j = int(j)
+                    print(f'\nTesting agent {i} on environment {j}...')
                     env = envs[j].copy()
                     env.random_state = np.random.RandomState(test_env_seed)
                     # TODO: change n to reasonable number: 1000? change num_sims?
-                    perf, steps = test_env(env, agent, sim_random_state=np.random.RandomState(test_sim_seed))
-                    print(perf, steps)
+                    perf, optimal_steps, agent_steps = test_env(env, agent, n=1000, num_sims=100, lstm=lstm, sim_random_state=np.random.RandomState(test_sim_seed))
+                    print(perf, optimal_steps, agent_steps)
                     # i, j means agent i in environment j
                     env_jumpstart_perfs[i, j] = perf
-                    env_optimal_steps[i, j] = steps
+                    env_optimal_steps[i, j] = optimal_steps
+                    env_agent_steps[i, j] = agent_steps
+                    # task_sim_score = envs[i].graph.compare2(envs[j].graph)
+                    # print('Task sim score:', task_sim_score)
+                    # task_sim_scores[i, j] = task_sim_score
             import code; code.interact(local=vars())
         else:
             agent = algo_trainer(config=config, env='gridworld')
