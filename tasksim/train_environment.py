@@ -307,6 +307,11 @@ def create_envs():
     return envs
 
 if __name__ == '__main__':
+    float_formatter = "{:.5f}".format
+    np.set_printoptions(formatter={'float_kind':float_formatter})
+    num_print_decimals = 5
+    np.set_printoptions(linewidth=200, precision=num_print_decimals, suppress=True)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', help='test instead of train the specified paths', action='store_true')
     parser.add_argument('--paths', default='agent_paths/ppo_3x3.json', help='meta folder for saving/restoring agents')
@@ -424,9 +429,13 @@ if __name__ == '__main__':
                     env_jumpstart_perfs[i, j] = perf
                     env_optimal_steps[i, j] = optimal_steps
                     env_agent_steps[i, j] = agent_steps
-                    # task_sim_score = envs[i].graph.compare2(envs[j].graph)
-                    # print('Task sim score:', task_sim_score)
-                    # task_sim_scores[i, j] = task_sim_score
+                    task_sim_score = envs[i].graph.compare2(envs[j].graph)
+                    print('Task sim score:', task_sim_score)
+                    task_sim_scores[i, j] = task_sim_score
+            print(task_sim_scores)
+            print(env_jumpstart_perfs)
+            corr_matrix = np.corrcoef(task_sim_scores.flatten(), env_jumpstart_perfs.flatten())
+            print(corr_matrix)
             import code; code.interact(local=vars())
         else:
             agent = algo_trainer(config=config, env='gridworld')
