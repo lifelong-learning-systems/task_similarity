@@ -156,8 +156,11 @@ if __name__ == '__main__':
             .build()
     
     trainer = QTrainer(env, "agent1.json", learning=(not test))
-    trainer.run()
+    trainer.run(1000)
     print(trainer.Q)
     plt.ion()
     plt.scatter([i for i in range(len(trainer.rewards))], trainer.rewards, 0.2)
     plt.show()
+    from tasksim.train_environment import test_env
+    trainer = QTrainer(env, "agent1.json", learning=False)
+    print(test_env(env, trainer))
