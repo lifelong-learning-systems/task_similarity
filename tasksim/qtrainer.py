@@ -9,6 +9,8 @@ import time
 import json
 from os import path
 
+import argparse
+
 class QTrainer():
 
     def __init__(self, env: MDPGraphEnv, agent_path, override_hyperparameters = True, lr=0.01, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=0.01, learning=True):
@@ -16,6 +18,7 @@ class QTrainer():
         self.Q = None
         self.agent_path = agent_path
         json_exists = path.exists(agent_path)
+        
 
         if json_exists:
             self._load_table(agent_path)    
@@ -30,10 +33,14 @@ class QTrainer():
             self.max_epsilon = max_epsilon
             self.decay = decay
             self.learning = learning
+            self.episode = 0
+            self.rewards = []
+
+
+        if not self.learning:
+            self.epsilon = 0
         
         self.total_rewards = 0
-        self.episode = 0
-        self.rewards = []
 
     def _load_table(self, path):
         with open(path, 'r') as file:
@@ -101,6 +108,9 @@ class QTrainer():
         
         return action
 
+    def compute_action(self, _):
+        return self._choose_action()
+
     def run(self, num_episodes = 10000):
         
         episodes = list(range(num_episodes))
@@ -128,26 +138,26 @@ class QTrainer():
             data['episode'] = self.episode
             json.dump(data, outfile)
         
-                
 
-def main():
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test', action='store_true', help='whether to disable learning')
+    args = parser.parse_args()
+    test = args.test
+    
 
     base_seed = 41239678
     transition_seed = 94619456
     env = EnvironmentBuilder((7, 7)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(21) \
+            .set_obs_size(7) \
+            .set_success_prob(1)\
             .build()
     
-    trainer = QTrainer(env, "task_similairty/tasksim/agent1.json", learning=True)
-    trainer.run(20000)
+    trainer = QTrainer(env, "agent1.json", learning=(not test))
+    trainer.run()
     print(trainer.Q)
-    plt.plot(trainer.rewards)
+    plt.ion()
+    plt.scatter([i for i in range(len(trainer.rewards))], trainer.rewards, 0.2)
     plt.show()
-
-
-
-
-if __name__ == '__main__':
-    main()
