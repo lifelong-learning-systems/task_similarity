@@ -18,9 +18,9 @@ class QTrainer():
         json_exists = path.exists(agent_path)
 
         if json_exists:
-            self.load_table(agent_path)    
+            self._load_table(agent_path)    
         else:
-            self.create_table()
+            self._create_table()
 
         if override_hyperparameters:
             self.lr = lr
@@ -35,7 +35,7 @@ class QTrainer():
         self.episode = 0
         self.rewards = []
 
-    def load_table(self, path):
+    def _load_table(self, path):
         with open(path, 'r') as file:
             
             obj = json.loads(file.read())
@@ -49,9 +49,11 @@ class QTrainer():
             self.Q = np.asarray_chkfinite(obj['Q'])
             self.rewards = obj['rewards']
             self.episode = obj['episode']
-            print(self.epsilon) 
 
-    def create_table(self):
+            assert self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1] == len(self.Q), 'error, '
+            
+
+    def _create_table(self):
         num_states = self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1]
         self.Q = np.zeros((num_states, 4))
         
@@ -138,15 +140,13 @@ def main():
             .set_obs_size(21) \
             .build()
     
-    trainer = QTrainer(env, "./agent1.json", learning=True)
+    trainer = QTrainer(env, "task_similairty/tasksim/agent1.json", learning=True)
     trainer.run(20000)
     print(trainer.Q)
     plt.plot(trainer.rewards)
     plt.show()
 
 
-    
-    
 
 
 if __name__ == '__main__':
