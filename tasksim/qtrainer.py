@@ -4,22 +4,52 @@ from tasksim.environment import MDPGraphEnv
 import random
 import numpy as np
 from tasksim.experiments.pipeline_utilities import progress_bar
+import matplotlib.pyplot as plt
+import time
+import json
+from os import path
 
 class QTrainer():
 
-    def __init__(self, env: MDPGraphEnv, lr=0.1, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=0.01, learning=False):
+    def __init__(self, env: MDPGraphEnv, agent_path, override_hyperparameters = True, lr=0.01, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=0.01, learning=True):
         self.env = env
-        self.Q = []
-        self.create_table()
-        self.lr = lr
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.min_epsilon = min_epsilon
-        self.max_epsilon = max_epsilon
-        self.decay = decay
-        self.learning = learning
+        self.Q = None
+        self.agent_path = agent_path
+        json_exists = path.exists(agent_path)
+
+        if json_exists:
+            self.load_table(agent_path)    
+        else:
+            self.create_table()
+
+        if override_hyperparameters:
+            self.lr = lr
+            self.gamma = gamma
+            self.epsilon = epsilon
+            self.min_epsilon = min_epsilon
+            self.max_epsilon = max_epsilon
+            self.decay = decay
+            self.learning = learning
+        
         self.total_rewards = 0
         self.episode = 0
+        self.rewards = []
+
+    def load_table(self, path):
+        with open(path, 'r') as file:
+            
+            obj = json.loads(file.read())
+            
+            self.lr = obj['lr']
+            self.gamma = obj['gamma']
+            self.epsilon = obj['epsion']
+            self.min_epsilon = obj['min_epsilon']
+            self.max_epsilon = obj['max_epsilon']
+            self.decay = obj['decay']
+            self.Q = np.asarray_chkfinite(obj['Q'])
+            self.rewards = obj['rewards']
+            self.episode = obj['episode']
+            print(self.epsilon) 
 
     def create_table(self):
         num_states = self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1]
@@ -29,7 +59,7 @@ class QTrainer():
         self.episode += 1
         return self.env.reset()
 
-    def qstep(self, action=None):
+    def step(self, action=None):
 
         if(action == None):
             action = self._choose_action()
@@ -55,10 +85,10 @@ class QTrainer():
         done = self.env.grid[row, col] == 2
 
         if self.learning:
-            self.epsilon = self.min_epsilon+(self.max_epsilon-self.min_epsilon)*np.exp(-self.decay*self.episode)
+            self.epsilon = self.epsilon - (self.decay/7000)
 
         return self.env.gen_obs(), reward, done, {}
-    
+        
     def _choose_action(self):
         prob_random = random.uniform(0, 1)
 
@@ -73,11 +103,30 @@ class QTrainer():
         
         episodes = list(range(num_episodes))
         for _ in progress_bar(episodes, prefix='Q_training', suffix='Complete'):
+        #for i in range(num_episodes):
+            self.total_rewards = 0
             obs = self.env.reset()
             done = False
             while not done:
-                obs, reward, done, _ = self.qstep()
+                obs, reward, done, _ = self.step()
                 self.total_rewards += reward
+            #print(self.epsilon)
+            self.rewards.append(self.total_rewards)
+        
+        with open(self.agent_path, 'w') as outfile:
+            data = {}
+            data['lr'] = self.lr
+            data['gamma'] = self.gamma
+            data['epsion'] = self.epsilon
+            data['min_epsilon'] = self.min_epsilon
+            data['max_epsilon'] = self.max_epsilon
+            data['decay'] = self.decay
+            data['Q'] = self.Q.tolist()
+            data['rewards'] = self.rewards
+            data['episode'] = self.episode
+            json.dump(data, outfile)
+        
+                
 
 def main():
 
@@ -86,12 +135,14 @@ def main():
     env = EnvironmentBuilder((7, 7)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
-            .set_obs_size(7) \
+            .set_obs_size(21) \
             .build()
     
-    trainer = QTrainer(env, learning=True)
-    trainer.run()
+    trainer = QTrainer(env, "./agent1.json", learning=True)
+    trainer.run(20000)
     print(trainer.Q)
+    plt.plot(trainer.rewards)
+    plt.show()
 
 
     
