@@ -304,7 +304,26 @@ def create_envs():
             .build()
     envs.append(multi_goal_env)
 
+    # ENV 5
+    goal_change2_env = EnvironmentBuilder((15, 15)) \
+            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
+            .set_step_reward(-0.001) \
+            .set_obs_size(OBS_SIZE) \
+            .set_goals([15*7+8]) \
+            .build()
+    envs.append(goal_change2_env)
+
     return envs
+
+def forward_transfer(agent, env, performance_goal):
+
+    # a. get the goal performance from each STE agent
+    # b. 
+
+    # 1. train agent until performance_goal met 
+    # 2. ???
+    # 3. return # of timesteps
+    pass
 
 if __name__ == '__main__':
     float_formatter = "{:.5f}".format
@@ -338,6 +357,7 @@ if __name__ == '__main__':
         return envs[config['env_id']]
     register_env("gridworld", env_creator)
 
+
     if last:
         base_dir = os.path.expanduser('~/ray_results/gridworld')
         def latest_file(path, dir=True):
@@ -361,7 +381,11 @@ if __name__ == '__main__':
                    'env_config':{'env_id': env_id, 'trial_name': f'{args.algo.upper()}_{"" if not lstm else "lstm_"}{obs_size_str}_gridworld_env-{env_id}'},
                    'framework':'torch',
                    "num_workers": 8,
-                   'model': {"use_lstm": lstm}})
+                   'model': {
+                        "use_lstm": lstm,
+                        'fcnet_hiddens': [32, 32]
+                       }
+                    })
     if algo == dqn:
         learning_start = 10000
         config.update({
@@ -404,10 +428,24 @@ if __name__ == '__main__':
         if os.path.exists(agent_paths) and not last:
             with open(agent_paths, 'r') as f:
                 path_obj = json.load(f)
+            fixed_path_obj = {int(k): v for k, v in path_obj.items()}
+            stops = [{'episode_reward_mean': x} for x in [.9909, .9884, .9942, .9908, .9956, .9912]]
+            configs = [None] * 6 
+            for i in range(6):
+                configs[i] = deepcopy(config)
+                configs[i]['env_config']['env_id'] = i
+                configs[i]['env_config']['trial_name'] = configs[i]['env_config']['trial_name'].replace('0', str(i))
+            sus_results = tune.run(algo_trainer,
+                     config=configs[5],
+                     checkpoint_freq=1, name='gridworld',
+                     trial_name_creator=lambda trial: trial_name_string(trial, config),
+                     stop=stops[5],
+                     restore=path_obj['0'])
+            import code; code.interact(local=vars())
             env_jumpstart_perfs = np.zeros((len(path_obj), len(path_obj)))
             env_optimal_steps = np.zeros((len(path_obj), len(path_obj)))
             env_agent_steps = np.zeros((len(path_obj), len(path_obj)))
-            task_sim_scores = np.zeros((len(path_obj), len(path_obj)))
+            task_diff_scores = np.zeros((len(path_obj), len(path_obj)))
             test_sim_seed = 123967763
             test_env_seed = 897612344
             config.update({
@@ -429,9 +467,10 @@ if __name__ == '__main__':
                     env_jumpstart_perfs[i, j] = perf
                     env_optimal_steps[i, j] = optimal_steps
                     env_agent_steps[i, j] = agent_steps
-                    task_sim_score = envs[i].graph.compare2(envs[j].graph)
-                    print('Task sim score:', task_sim_score)
-                    task_sim_scores[i, j] = task_sim_score
+                    task_diff_score = envs[i].graph.compare2(envs[j].graph)
+                    print('Task diff score:', task_diff_score)
+                    task_diff_scores[i, j] = task_diff_score
+            task_sim_scores = 1 - task_diff_scores
             print(task_sim_scores)
             print(env_jumpstart_perfs)
             corr_matrix = np.corrcoef(task_sim_scores.flatten(), env_jumpstart_perfs.flatten())
