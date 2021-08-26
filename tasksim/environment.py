@@ -26,7 +26,7 @@ class MDPGraphEnv(gym.Env):
         self.height, self.width = self.grid.shape
         # TODO: stack of past N frames? like in arcade type enviros
         # 0 = normal, 1 = obstacle, 2 = goal state, 3 = current location, 4 = inaccessible (if not wraparound)/not visible
-        self.observation_space = spaces.Box(low=0, high=4, shape=(obs_size, obs_size), dtype=np.uint8)
+        self.observation_space = spaces.Box(low=0, high=4, shape=(obs_size, obs_size, ), dtype=np.uint8)
         # e.g. simple 3x3, upper-left:
         # 4 4 4
         # 4 3 0
@@ -55,7 +55,7 @@ class MDPGraphEnv(gym.Env):
     # TODO: should observation be whole grid? or just a local snapshot, etc.
     # TODO: limited observation size
     # TODO: limited observation lag behind/around (like in Mario) or agent always center but "black out" other squares? Or see wrap-around (if available)
-    def gen_obs(self, center=False):
+    def gen_obs(self, center=True):
         # base_grid = self.grid.copy()
         # row, col = self.row_col(self.state)
         # base_grid[row, col] = 3

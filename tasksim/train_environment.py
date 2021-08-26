@@ -260,7 +260,7 @@ def create_envs():
     envs = []
     base_seed = 41239678
     transition_seed = 94619456
-    OBS_SIZE = 17
+    OBS_SIZE = 7
     # ENV 0
     base_env = EnvironmentBuilder((15, 15)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
@@ -387,11 +387,18 @@ if __name__ == '__main__':
                    'env_config':{'env_id': env_id, 'trial_name': f'{args.algo.upper()}_{"" if not lstm else "lstm_"}{obs_size_str}_gridworld_env-{env_id}'},
                    'framework':'torch',
                    "num_workers": 8,
-                   'model': {
-                        "use_lstm": lstm,
-                        # TODO: add CNN? Make own model and just pass in? Reduce even further...
-                        'fcnet_hiddens': [32, 32]
-                       }
+                   'model': {	
+                        'conv_activation': "relu",
+                        'dim': 7, 
+                        
+                        'conv_filters': [  	
+                            [16, [3, 3], 1], 
+                            [8, [3, 3], 1],
+                        ],
+                        
+                        'fcnet_hiddens': [32], 
+                        'fcnet_activation':'tanh'
+                        }
                     })
     if algo == dqn:
         learning_start = 10000
@@ -438,6 +445,14 @@ if __name__ == '__main__':
         path_obj[str(env_id)] = path
         with open(agent_paths, 'w') as f:
             json.dump(path_obj, f)
+        agent = algo_trainer(config=config, env='gridworld')
+        agent.restore(path)
+        env = envs[0]
+        obs = env.reset()
+        print(obs)
+        while True:
+            import pdb; pdb.set_trace()
+            agent.compute_action(obs)
     else:
         ray.init()
         if os.path.exists(agent_paths) and not last:
@@ -450,12 +465,13 @@ if __name__ == '__main__':
                 configs[i] = deepcopy(config)
                 configs[i]['env_config']['env_id'] = i
                 configs[i]['env_config']['trial_name'] = configs[i]['env_config']['trial_name'].replace('0', str(i))
-            # sus_results = tune.run(algo_trainer,
-            #          config=configs[1],
-            #          checkpoint_freq=1, name='gridworld',
-            #          trial_name_creator=lambda trial: trial_name_string(trial, config),
-            #          stop=stops[1],
-            #          restore=path_obj['0'])
+            sus_results = tune.run(algo_trainer,
+                     config=configs[3],
+                     checkpoint_freq=1, name='gridworld',
+                     trial_name_creator=lambda trial: trial_name_string(trial, config),
+                     stop=stops[3],
+                     restore=path_obj['0'])
+            import code; code.interact(local=vars())
             env_jumpstart_perfs = np.zeros((len(path_obj), len(path_obj)))
             env_optimal_steps = np.zeros((len(path_obj), len(path_obj)))
             env_agent_steps = np.zeros((len(path_obj), len(path_obj)))
