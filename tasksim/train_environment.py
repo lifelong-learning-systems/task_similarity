@@ -336,13 +336,19 @@ if __name__ == '__main__':
     parser.add_argument('--paths', default='agent_paths/ppo_3x3.json', help='meta folder for saving/restoring agents')
     parser.add_argument('--last', help='use last training session to resume training [NOT SUPPORTED] or test', action='store_true')
     parser.add_argument('--lstm', help='use lstm', action='store_true')
-    parser.add_argument('--iters', default=10000, help='number of iters to train')
+    parser.add_argument('--iters', default=100, help='number of iters to train')
+    parser.add_argument('--episodes', default=10000, help='number of episodes to train')
+    parser.add_argument('--steps', default=100000, help='number of timesteps to train')
+    parser.add_argument('--kl', default=0.01, help='kl value to train to')
     parser.add_argument('--env', default=0, help='which env id to use')
     #parser.add_argument('--obs', default=3, help='observation size')
     parser.add_argument('--algo', default='ppo', choices=['ppo', 'dqn'], help='which algorithm to train with')
     args = parser.parse_args()
     train = not args.test
     iters = int(args.iters)
+    episodes = int(args.episodes)
+    timesteps = int(args.steps)
+    kl_stop = float(args.kl)
     last = args.last
     lstm = args.lstm
     agent_paths = args.paths
@@ -383,6 +389,7 @@ if __name__ == '__main__':
                    "num_workers": 8,
                    'model': {
                         "use_lstm": lstm,
+                        # TODO: add CNN? Make own model and just pass in? Reduce even further...
                         'fcnet_hiddens': [32, 32]
                        }
                     })
@@ -400,6 +407,14 @@ if __name__ == '__main__':
     def trial_name_string(_, config):
         return config['env_config']['trial_name']
 
+    import torch
+    from torch.nn.functional import softmax
+    action_dist = lambda x, obs: x.get_policy().compute_single_action(obs)[2]['action_dist_inputs']
+    def get_action(agent, obs, deterministic=False):
+        dist = action_dist(agent, obs)
+        dist = np.array(softmax(torch.FloatTensor(dist)))
+        return np.argmax(dist) if deterministic else np.random.choice([i for i in range(len(dist))], p=dist)
+
     if train:
         results = tune.run(algo_trainer, config=config,
                 checkpoint_freq = 1,
@@ -407,7 +422,7 @@ if __name__ == '__main__':
                 trial_name_creator=lambda trial: trial_name_string(trial, config),
                 # TODO: use stopping condition of episodes_total for transfer learning?
                 #stop={'training_iteration': iters}
-                stop={'episodes_total': iters}
+                stop={'agent_timesteps_total': timesteps}#, 'kl': kl_stop}
         ) 
         metric='training_iteration'
         mode='max'
@@ -435,13 +450,12 @@ if __name__ == '__main__':
                 configs[i] = deepcopy(config)
                 configs[i]['env_config']['env_id'] = i
                 configs[i]['env_config']['trial_name'] = configs[i]['env_config']['trial_name'].replace('0', str(i))
-            sus_results = tune.run(algo_trainer,
-                     config=configs[5],
-                     checkpoint_freq=1, name='gridworld',
-                     trial_name_creator=lambda trial: trial_name_string(trial, config),
-                     stop=stops[5],
-                     restore=path_obj['0'])
-            import code; code.interact(local=vars())
+            # sus_results = tune.run(algo_trainer,
+            #          config=configs[1],
+            #          checkpoint_freq=1, name='gridworld',
+            #          trial_name_creator=lambda trial: trial_name_string(trial, config),
+            #          stop=stops[1],
+            #          restore=path_obj['0'])
             env_jumpstart_perfs = np.zeros((len(path_obj), len(path_obj)))
             env_optimal_steps = np.zeros((len(path_obj), len(path_obj)))
             env_agent_steps = np.zeros((len(path_obj), len(path_obj)))
@@ -455,6 +469,7 @@ if __name__ == '__main__':
                 i = int(i)
                 agent = algo_trainer(config=config, env='gridworld')
                 agent.restore(path)
+                import code; code.interact(local=vars())
                 for j, _ in path_obj.items():
                     j = int(j)
                     print(f'\nTesting agent {i} on environment {j}...')
