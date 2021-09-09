@@ -90,6 +90,7 @@ class QTrainer:
                             w = 0.5*w_s + 0.5*w_a
                         else:
                             # TODO: actually do 4.2 State Transfer from the paper
+                            import pdb; pdb.set_trace()
                             w = 1 if S[s_i, :].argmax() == s_j else 0
                         other.Q[s_i, a_i] += w*self.Q[s_j, a_j]
 
@@ -167,6 +168,32 @@ class QTrainer:
             data['episode'] = self.episode
             json.dump(data, outfile)
         
+def create_curriculum():
+    envs = []
+
+    def ravel(row, col, rows=7, cols=7):
+        return row*cols + col
+
+    def unravel(idx, rows=7, cols=7):
+        return (idx // cols, idx % cols)
+
+    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_success_prob(1.0)\
+            .build())
+    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_goals([ravel(4, 4)]) \
+            .set_success_prob(1.0)\
+            .build())
+    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_goals([ravel(1, 1)]) \
+            .set_success_prob(1.0)\
+            .build())
+
+    import pdb; pdb.set_trace()
+    return envs
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -174,6 +201,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     test = args.test
     
+    envs = create_curriculum()
 
     base_seed = 41239678
     transition_seed = 94619456
@@ -210,6 +238,13 @@ if __name__ == '__main__':
     trainer3_baseline = QTrainer(env3, "agent3_baseline.json", learning=True)
     trainer3_transfer = QTrainer(env3, "agent3_transfer.json", learning=True)
     trainer.transfer_to(trainer3_transfer)
+    # TODO: Need to explore why state-state similarity is max for each state to goal state???
+    # TODO: curriculum training + convolutional stuff?
+    # TODO: interesting curriculum ideas:
+    # - vary slightly, learn skills as we go to induce transfer; see task sim therein
+    # - do 1:7x7, and see if high variance of observed transfer
+
+    import pdb; pdb.set_trace()
     
     #print('Baseline (Agent 1):', test_env(env, trainer))
     num_eps = 200
