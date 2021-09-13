@@ -97,6 +97,7 @@ class QTrainer:
                             w = 0.5*w_s + 0.5*w_a
                         else:
                             # TODO: actually do 4.2 State Transfer from the paper
+                            import pdb; pdb.set_trace()
                             w = 1 if S[s_i, :].argmax() == s_j else 0
                         other.Q[s_i, a_i] += w*self.Q[s_j, a_j]
 
@@ -178,6 +179,32 @@ class QTrainer:
             data['episode'] = self.episode
             json.dump(data, outfile)
         
+def create_curriculum():
+    envs = []
+
+    def ravel(row, col, rows=7, cols=7):
+        return row*cols + col
+
+    def unravel(idx, rows=7, cols=7):
+        return (idx // cols, idx % cols)
+
+    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_success_prob(1.0)\
+            .build())
+    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_goals([ravel(4, 4)]) \
+            .set_success_prob(1.0)\
+            .build())
+    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_goals([ravel(1, 1)]) \
+            .set_success_prob(1.0)\
+            .build())
+
+    import pdb; pdb.set_trace()
+    return envs
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -185,6 +212,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     test = args.test
     
+    envs = create_curriculum()
 
     base_seed = 41239678
     transition_seed = 94619456
@@ -282,5 +310,5 @@ if __name__ == '__main__':
     # axs[0].hist(agent2diff_arr, bins=n_bins)
     # axs[1].hist(agent3diff_arr, bins=n_bins)
     plt.show()
-
+    
     import code; code.interact(local=vars())
