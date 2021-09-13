@@ -13,17 +13,24 @@ from os import path
 import argparse
 
 class QTrainer:
-    def __init__(self, env: MDPGraphEnv, agent_path, override_hyperparameters = True, lr=0.01, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=0.01, learning=True):
+    def __init__(self, env: MDPGraphEnv, agent_path=None, no_save=False, override_hyperparameters = False, lr=0.01, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=0.01, learning=True):
         self.env = env
         self.Q = None
+        self.learning = learning
         self.agent_path = agent_path
-        json_exists = path.exists(agent_path)
-        
 
-        if json_exists:
+        if agent_path == None:
+            no_save = True
+        
+        json_exists = path.exists(agent_path)
+
+        self.no_save = no_save        
+
+        if json_exists and not self.no_save:
             self._load_table(agent_path)    
         else:
             self._create_table()
+            override_hyperparameters = True
 
         if override_hyperparameters:
             self.lr = lr
@@ -32,7 +39,6 @@ class QTrainer:
             self.min_epsilon = min_epsilon
             self.max_epsilon = max_epsilon
             self.decay = decay
-            self.learning = learning
             self.episode = 0
             self.rewards = []
 
@@ -57,7 +63,7 @@ class QTrainer:
             self.rewards = obj['rewards']
             self.episode = obj['episode']
 
-            assert self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1] == len(self.Q), 'error, '
+            assert self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1] == len(self.Q), 'error: Qtable statespace mismatch'
             
 
     def _create_table(self):
@@ -73,6 +79,7 @@ class QTrainer:
         A = 1 - A
         S_total = S.sum().sum()
         A_total = A.sum().sum()
+
         if not direct_transfer:
             S = S / S_total
             A = A / A_total
@@ -128,9 +135,10 @@ class QTrainer:
         return self.env.gen_obs(), reward, done, {}
         
     def _choose_action(self):
+        
         prob_random = random.uniform(0, 1)
 
-        if prob_random > self.epsilon:
+        if not self.learning or prob_random > self.epsilon:
             action = np.argmax(self.Q[self.env.state, :])
         else:
             action = self.env.action_space.sample()
@@ -140,7 +148,7 @@ class QTrainer:
     def compute_action(self, _):
         return self._choose_action()
 
-    def run(self, num_episodes = 10000):
+    def run(self, num_episodes = 5000):
         
         episodes = list(range(num_episodes))
         for _ in progress_bar(episodes, prefix='Q_training', suffix='Complete'):
@@ -154,6 +162,9 @@ class QTrainer:
             #print(self.epsilon)
             self.rewards.append(self.total_rewards)
         
+        if self.no_save:
+            return
+
         with open(self.agent_path, 'w') as outfile:
             data = {}
             data['lr'] = self.lr
@@ -177,17 +188,18 @@ if __name__ == '__main__':
 
     base_seed = 41239678
     transition_seed = 94619456
-    env = EnvironmentBuilder((7, 7)) \
+    env = EnvironmentBuilder((9, 9)) \
             .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
             .set_obs_size(7) \
             .set_success_prob(0.9)\
             .build()
-    env2 = EnvironmentBuilder((7, 7)) \
-            .set_obstacles(obstacle_prob=0.1, obstacle_random_state=np.random.RandomState(base_seed)) \
+    env2 = EnvironmentBuilder((9, 9)) \
+            .set_obstacles(obstacle_prob=0.3, obstacle_random_state=np.random.RandomState(base_seed)) \
             .set_step_reward(-0.001) \
             .set_obs_size(7) \
-            .set_success_prob(0.7)\
+            .set_success_prob(0.65)\
+            .set_goals([4*9+6])\
             .build()
     env3 = EnvironmentBuilder((7, 7)) \
             .set_obstacles(obstacle_prob=0.1, obstacle_random_state=np.random.RandomState(base_seed)) \
@@ -198,27 +210,77 @@ if __name__ == '__main__':
             .build()
     
     trainer = QTrainer(env, "agent1.json", learning=(not test))
-    trainer.run(1000)
-
-    plt.ion()
-    plt.scatter([i for i in range(len(trainer.rewards))], trainer.rewards, 0.2)
-    plt.show()
-    trainer = QTrainer(env, "agent1.json", learning=False)
-    trainer2_baseline = QTrainer(env2, "agent2_baseline.json", learning=True)
-    trainer2_transfer = QTrainer(env2, "agent2_transfer.json", learning=True)
-    trainer.transfer_to(trainer2_transfer)
-    trainer3_baseline = QTrainer(env3, "agent3_baseline.json", learning=True)
-    trainer3_transfer = QTrainer(env3, "agent3_transfer.json", learning=True)
-    trainer.transfer_to(trainer3_transfer)
+    trainer.run(10000)
     
-    #print('Baseline (Agent 1):', test_env(env, trainer))
-    num_eps = 200
-    trainer2_baseline.run(num_eps)
-    trainer2_transfer.run(num_eps)
-    trainer3_baseline.run(num_eps)
-    trainer3_transfer.run(num_eps)
-    print('Agent 2 baseline:', test_env(env2, trainer2_baseline))
-    print('Agent 2 transfer:', test_env(env2, trainer2_transfer))
-    print('Agent 3 baseline:', test_env(env3, trainer3_baseline))
-    print('Agent 3 transfer:', test_env(env3, trainer3_transfer))
+
+    # plt.ion()
+    # plt.scatter([i for i in range(len(trainer.rewards))], trainer.rewards, 0.2)
+    # plt.show()
+
+    agent2diff_arr = []
+    agent3diff_arr = []
+    agent2base_test_arr = []
+    agent3base_test_arr = []
+    agent2trans_test_arr = []
+    agent3trans_test_arr = []
+    transfer_trials = 100
+
+
+    for i in range(transfer_trials):
+
+        print("------------------\nCurrent trial: ", i + 1, "\n------------------")
+        #trainer = QTrainer(env, "agent1.json", learning=False)
+        trainer2_baseline = QTrainer(env2, "agent2_baseline.json", learning=True, no_save=True)
+        trainer2_transfer = QTrainer(env2, "agent2_transfer.json", learning=True, no_save=True)
+        trainer.transfer_to(trainer2_transfer, direct_transfer=False)
+
+        # trainer3_baseline = QTrainer(env3, "agent3_baseline.json", learning=True, no_save=True)
+        # trainer3_transfer = QTrainer(env3, "agent3_transfer.json", learning=True, no_save=True)
+        # trainer.transfer_to(trainer3_transfer, direct_transfer=False)
+        
+        #print('Baseline (Agent 1):', test_env(env, trainer))
+        num_eps = 100
+        trainer2_baseline.run(num_eps)
+        trainer2_transfer.run(num_eps)
+        # trainer3_baseline.run(num_eps)
+        # trainer3_transfer.run(num_eps)
+
+        trainer2_baseline.learning = False
+        trainer2_transfer.learning = False
+        # trainer3_baseline.learning = False
+        # trainer3_transfer.learning = False
+    
+        agent2base_test = test_env(env2, trainer2_baseline)
+        agent2base_test_arr.append(agent2base_test)
+
+        agent2trans_test = test_env(env2, trainer2_transfer)
+        agent2trans_test_arr.append(agent2trans_test)
+
+        agent2diff = agent2trans_test[0] - agent2base_test[0]
+        agent2diff_arr.append(agent2diff)
+
+        # agent3base_test = test_env(env3, trainer3_baseline)
+        # agent3base_test_arr.append(agent3base_test)
+
+        # agent3trans_test = test_env(env3, trainer3_transfer)
+        # agent3trans_test_arr.append(agent3trans_test)
+
+        # agent3diff = agent3trans_test[0] - agent3base_test[0]
+        # agent3diff_arr.append(agent3diff)
+
+
+        # print('Agent 2 baseline:', agent2base_test)
+        # print('Agent 2 transfer:', agent2trans_test)
+        # print('Agent 3 baseline:', agent3base_test)
+        # print('Agent 3 transfer:', agent3trans_test)
+        
+    
+    n_bins = 20
+    plt.ion()
+    plt.hist(agent2diff_arr, bins=n_bins)
+    # fig, axs = plt.subplots(1, 2, sharey=True, tight_layout=True)
+    # axs[0].hist(agent2diff_arr, bins=n_bins)
+    # axs[1].hist(agent3diff_arr, bins=n_bins)
+    plt.show()
+
     import code; code.interact(local=vars())
