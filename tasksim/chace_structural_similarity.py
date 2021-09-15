@@ -20,7 +20,7 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
 
 def structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                           out_neighbors_S2, c_a=0.95, c_s=0.95, stop_rtol=1e-3,
-                          stop_atol=1e-4, max_iters=1e5, zero_init=False):
+                          stop_atol=1e-4, max_iters=1e5, zero_init=True):
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
 
@@ -29,10 +29,6 @@ def structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_m
     if zero_init:
         S = np.zeros((n_states1, n_states2))
         A = np.zeros((n_actions1, n_actions2))
-        S = np.random.rand(n_states1, n_states2)
-        A = np.random.rand(n_actions1, n_actions2)
-    # S = np.eye(n_states1, n_states2)
-    # A = np.eye(n_actions1, n_actions2)
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
@@ -58,19 +54,24 @@ def structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_m
                         emd = ot.emd2(p_alpha, p_beta, 1 - S)  # Note: can be >1 by small rounding error
                         entry = 1 - one_minus_c_a * d_rwd - c_a * emd
                         A[alpha, beta] = entry
-                        #A[beta, alpha] = entry  # have to keep track of whole matrix for directed hausdorff
 
         for u in states1:
             for v in states2:
                 # TODO: figure out how to actually handle real absorbing states; mayhaps just augment?
                 if len(out_neighbors_S1[u]) == 0 or len(out_neighbors_S2[v]) == 0:
-                    continue  # skip
-                #import pdb; pdb.set_trace()
-                haus = max(directed_hausdorff_numpy(1 - A, out_neighbors_S1[u], out_neighbors_S2[v]),
-                           directed_hausdorff_numpy((1 - A).T, out_neighbors_S2[v], out_neighbors_S1[u]))
-                entry = c_s * (1 - haus)
+                    if len(out_neighbors_S1[u]) == 0 and len(out_neighbors_S2[v]) == 0:
+                        # absorbing to absorbing
+                        # set haus distance to 0, i.e. they are equivalent
+                        entry = c_s
+                    else:
+                        # absorbing to empty
+                        # set haus distance to inf, or in this case, 1, i.e. they are maximally dissimilar
+                        entry = 0
+                else:
+                    haus = max(directed_hausdorff_numpy(1 - A, out_neighbors_S1[u], out_neighbors_S2[v]),
+                               directed_hausdorff_numpy((1 - A).T, out_neighbors_S2[v], out_neighbors_S1[u]))
+                    entry = c_s * (1 - haus)
                 S[u, v] = entry
-                #S[v, u] = entry  # Note: might be unnecessary, just need upper triangle of matrix due to symmetry
 
         if np.allclose(A, last_A, rtol=stop_rtol, atol=stop_atol) and np.allclose(S, last_S, rtol=stop_rtol,
                                                                                   atol=stop_atol):
