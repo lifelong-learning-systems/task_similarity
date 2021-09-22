@@ -8,7 +8,7 @@ from enum import Enum
 import ray
 import scipy
 
-from .utils import emd_c, emd_c_chunk, get_num_cpu, init_ray
+from tasksim.utils import emd_c, emd_c_chunk, get_num_cpu, init_ray
 import process_chunk as pc
 from numba import jit
 from numba.extending import get_cython_function_address

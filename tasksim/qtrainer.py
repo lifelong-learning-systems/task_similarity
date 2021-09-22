@@ -1,3 +1,4 @@
+from curriculum_tools import curriculum
 from numpy.core.fromnumeric import var
 import tasksim.gridworld_generator as gen
 from tasksim.train_environment import EnvironmentBuilder, test_env
@@ -5,10 +6,12 @@ from tasksim.environment import MDPGraphEnv
 import random
 import numpy as np
 from tasksim.experiments.pipeline_utilities import progress_bar
+import tasksim.structural_similarity as sim
 import matplotlib.pyplot as plt
 import time
 import json
 from os import path
+import curriculum_tools
 
 import argparse
 
@@ -22,7 +25,7 @@ class QTrainer:
         if agent_path == None:
             no_save = True
         
-        json_exists = path.exists(agent_path)
+        json_exists = False if agent_path is None else path.exists(agent_path)
 
         self.no_save = no_save        
 
@@ -151,6 +154,7 @@ class QTrainer:
 
     def run(self, num_episodes = 5000):
         
+        
         episodes = list(range(num_episodes))
         for _ in progress_bar(episodes, prefix='Q_training', suffix='Complete'):
         #for i in range(num_episodes):
@@ -178,9 +182,16 @@ class QTrainer:
             data['rewards'] = self.rewards
             data['episode'] = self.episode
             json.dump(data, outfile)
+
+    def eval(self):
+
+        self.learning = False
+        test = test_env(self.env, self)
+        return test
+
         
 def create_curriculum():
-    envs = []
+    
 
     def ravel(row, col, rows=7, cols=7):
         return row*cols + col
@@ -188,23 +199,50 @@ def create_curriculum():
     def unravel(idx, rows=7, cols=7):
         return (idx // cols, idx % cols)
 
-    envs.append(EnvironmentBuilder((7, 7)) \
+
+    envs = []
+    num_eps = 2000
+
+    env1 = EnvironmentBuilder((7, 7)) \
             .set_obs_size(7) \
             .set_success_prob(1.0)\
-            .build())
-    envs.append(EnvironmentBuilder((7, 7)) \
+            .build()
+
+    env2 = EnvironmentBuilder((7, 7)) \
             .set_obs_size(7) \
             .set_goals([ravel(4, 4)]) \
-            .set_success_prob(1.0)\
-            .build())
-    envs.append(EnvironmentBuilder((7, 7)) \
+            .set_success_prob(0.95)\
+            .build()
+            
+    env3 = EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_goals([ravel(2, 2)]) \
+            .set_obstacles(obstacle_prob=0.10)\
+            .set_success_prob(0.75)\
+            .build()
+
+    env4 = EnvironmentBuilder((7, 7)) \
             .set_obs_size(7) \
             .set_goals([ravel(1, 1)]) \
-            .set_success_prob(1.0)\
-            .build())
+            .set_success_prob(0.44)\
+            .build()
 
-    import pdb; pdb.set_trace()
-    return envs
+    env5 = EnvironmentBuilder((7, 7)) \
+            .set_obs_size(7) \
+            .set_goals([ravel(1, 2)]) \
+            .set_obstacles(obstacle_prob=0.12) \
+            .set_success_prob(0.20) \
+            .build()
+
+    schedule = [[env1, num_eps], [env2, num_eps], [env3, num_eps], [env4, num_eps], [env5, num_eps]]
+
+    #env, total_episodes = curriculum_tools.make_curriculum(schedule=schedule, episodic=True)
+    
+    envs.extend([env1, env2, env3, env4, env5])
+    
+
+    #import pdb; pdb.set_trace()
+    return envs #, total_episodes
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -212,103 +250,168 @@ if __name__ == '__main__':
     args = parser.parse_args()
     test = args.test
     
+    num_episodes = 300
     envs = create_curriculum()
-
-    base_seed = 41239678
-    transition_seed = 94619456
-    env = EnvironmentBuilder((9, 9)) \
-            .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
-            .set_step_reward(-0.001) \
-            .set_obs_size(7) \
-            .set_success_prob(0.9)\
-            .build()
-    env2 = EnvironmentBuilder((9, 9)) \
-            .set_obstacles(obstacle_prob=0.3, obstacle_random_state=np.random.RandomState(base_seed)) \
-            .set_step_reward(-0.001) \
-            .set_obs_size(7) \
-            .set_success_prob(0.65)\
-            .set_goals([4*9+6])\
-            .build()
-    env3 = EnvironmentBuilder((7, 7)) \
-            .set_obstacles(obstacle_prob=0.1, obstacle_random_state=np.random.RandomState(base_seed)) \
-            .set_goals([6*7+6]) \
-            .set_step_reward(-0.001) \
-            .set_obs_size(7) \
-            .set_success_prob(0.7)\
-            .build()
+    agent_name = "currAgent"
+    # currenv = EnvironmentBuilder((7, 7)) \
+    #         .set_obs_size(7) \
+    #         .set_success_prob(1.0)\
+    #         .build()
     
-    trainer = QTrainer(env, "agent1.json", learning=(not test))
-    trainer.run(10000)
+
+    transfer_gains = []
+    similarity_scores = []
+    # S, A, num_iters, _  = envs[0].graph.compare(envs[1].graph)
+    # score = sim.final_score(S)
+    # norm_score = sim.normalize_score(score)
+    qtrainer_trans = QTrainer(envs[0])
+    old_env = envs[0]
+
+    for env in envs:
+
+        if(old_env != env):
+            S, A, num_iters, _  = old_env.graph.compare(env.graph)
+            score =  1 - sim.final_score(S)
+            #norm_score = 1 - sim.normalize_score(score)
+            similarity_scores.append(score)
+
+        old_env = env
+
+        qtrainer = QTrainer(env, agent_path=agent_name + '.json', override_hyperparameters=True)
+        same = True if qtrainer_trans.env == qtrainer.env else False
+
+        qtrainer_trans.transfer_to(qtrainer, direct_transfer=False)
+        qtrainer_trans = QTrainer(env)
+
+        qtrainer.run(num_episodes)
+        qtrainer_trans.run(num_episodes)
+
+        qtrainer_eval = qtrainer.eval()
+        qtrainer_trans_eval = qtrainer_trans.eval()
+        curriculum_gain = qtrainer_trans_eval[0] - qtrainer_eval[0]
+
+        if not same:
+            transfer_gains.append(curriculum_gain)
+
+
+        qtrainer_trans = qtrainer
+
+    print(transfer_gains, similarity_scores)
+    
+    # for env:
+    #     qtrainer = QTrainer(env.env, agent_path=agent_name + '.json')
+
+    #     qtrainer_trans.transfer_to(qtrainer, direct_transfer=False)
+    #     qtrainer_trans = QTrainer(env)
+
+    #     qtrainer.run(num_episodes)
+    #     qtrainer_trans.run(num_episodes)
+
+    #     qtrainer_eval = qtrainer.eval()
+    #     qtrainer_trans_eval = qtrainer_trans.eval()
+    #     curriculum_gain = qtrainer_eval[0] - qtrainer_trans_eval[0]
+
+    #     transfer_gains.append(curriculum_gain)
+
+    #     qtrainer_trans = qtrainer
+    
+
+    # base_seed = 41239678
+    # transition_seed = 94619456
+    # env = EnvironmentBuilder((9, 9)) \
+    #         .set_obstacles(obstacle_prob=0.2, obstacle_random_state=np.random.RandomState(base_seed)) \
+    #         .set_step_reward(-0.001) \
+    #         .set_obs_size(7) \
+    #         .set_success_prob(0.9)\
+    #         .build()
+    # env2 = EnvironmentBuilder((9, 9)) \
+    #         .set_obstacles(obstacle_prob=0.3, obstacle_random_state=np.random.RandomState(base_seed)) \
+    #         .set_step_reward(-0.001) \
+    #         .set_obs_size(7) \
+    #         .set_success_prob(0.65)\
+    #         .set_goals([4*9+6])\
+    #         .build()
+    # env3 = EnvironmentBuilder((7, 7)) \
+    #         .set_obstacles(obstacle_prob=0.1, obstacle_random_state=np.random.RandomState(base_seed)) \
+    #         .set_goals([6*7+6]) \
+    #         .set_step_reward(-0.001) \
+    #         .set_obs_size(7) \
+    #         .set_success_prob(0.7)\
+    #         .build()
+    
+
+    # trainer = QTrainer(env, "agent1.json", learning=(not test))
+    # trainer.run(10000)
     
 
     # plt.ion()
     # plt.scatter([i for i in range(len(trainer.rewards))], trainer.rewards, 0.2)
     # plt.show()
 
-    agent2diff_arr = []
-    agent3diff_arr = []
-    agent2base_test_arr = []
-    agent3base_test_arr = []
-    agent2trans_test_arr = []
-    agent3trans_test_arr = []
-    transfer_trials = 100
+    # agent2diff_arr = []
+    # agent3diff_arr = []
+    # agent2base_test_arr = []
+    # agent3base_test_arr = []
+    # agent2trans_test_arr = []
+    # agent3trans_test_arr = []
+    # transfer_trials = 100
 
 
-    for i in range(transfer_trials):
+    # for i in range(transfer_trials):
 
-        print("------------------\nCurrent trial: ", i + 1, "\n------------------")
-        #trainer = QTrainer(env, "agent1.json", learning=False)
-        trainer2_baseline = QTrainer(env2, "agent2_baseline.json", learning=True, no_save=True)
-        trainer2_transfer = QTrainer(env2, "agent2_transfer.json", learning=True, no_save=True)
-        trainer.transfer_to(trainer2_transfer, direct_transfer=False)
+    #     print("------------------\nCurrent trial: ", i + 1, "\n------------------")
+    #     #trainer = QTrainer(env, "agent1.json", learning=False)
+    #     trainer2_baseline = QTrainer(env2, "agent2_baseline.json", learning=True, no_save=True)
+    #     trainer2_transfer = QTrainer(env2, "agent2_transfer.json", learning=True, no_save=True)
+    #     trainer.transfer_to(trainer2_transfer, direct_transfer=False)
 
-        # trainer3_baseline = QTrainer(env3, "agent3_baseline.json", learning=True, no_save=True)
-        # trainer3_transfer = QTrainer(env3, "agent3_transfer.json", learning=True, no_save=True)
-        # trainer.transfer_to(trainer3_transfer, direct_transfer=False)
+    #     # trainer3_baseline = QTrainer(env3, "agent3_baseline.json", learning=True, no_save=True)
+    #     # trainer3_transfer = QTrainer(env3, "agent3_transfer.json", learning=True, no_save=True)
+    #     # trainer.transfer_to(trainer3_transfer, direct_transfer=False)
         
-        #print('Baseline (Agent 1):', test_env(env, trainer))
-        num_eps = 100
-        trainer2_baseline.run(num_eps)
-        trainer2_transfer.run(num_eps)
-        # trainer3_baseline.run(num_eps)
-        # trainer3_transfer.run(num_eps)
+    #     #print('Baseline (Agent 1):', test_env(env, trainer))
+    #     num_eps = 100
+    #     trainer2_baseline.run(num_eps)
+    #     trainer2_transfer.run(num_eps)
+    #     # trainer3_baseline.run(num_eps)
+    #     # trainer3_transfer.run(num_eps)
 
-        trainer2_baseline.learning = False
-        trainer2_transfer.learning = False
-        # trainer3_baseline.learning = False
-        # trainer3_transfer.learning = False
+    #     trainer2_baseline.learning = False
+    #     trainer2_transfer.learning = False
+    #     # trainer3_baseline.learning = False
+    #     # trainer3_transfer.learning = False
     
-        agent2base_test = test_env(env2, trainer2_baseline)
-        agent2base_test_arr.append(agent2base_test)
+    #     agent2base_test = test_env(env2, trainer2_baseline)
+    #     agent2base_test_arr.append(agent2base_test)
 
-        agent2trans_test = test_env(env2, trainer2_transfer)
-        agent2trans_test_arr.append(agent2trans_test)
+    #     agent2trans_test = test_env(env2, trainer2_transfer)
+    #     agent2trans_test_arr.append(agent2trans_test)
 
-        agent2diff = agent2trans_test[0] - agent2base_test[0]
-        agent2diff_arr.append(agent2diff)
+    #     agent2diff = agent2trans_test[0] - agent2base_test[0]
+    #     agent2diff_arr.append(agent2diff)
 
-        # agent3base_test = test_env(env3, trainer3_baseline)
-        # agent3base_test_arr.append(agent3base_test)
+    #     agent3base_test = test_env(env3, trainer3_baseline)
+    #     agent3base_test_arr.append(agent3base_test)
 
-        # agent3trans_test = test_env(env3, trainer3_transfer)
-        # agent3trans_test_arr.append(agent3trans_test)
+    #     agent3trans_test = test_env(env3, trainer3_transfer)
+    #     agent3trans_test_arr.append(agent3trans_test)
 
-        # agent3diff = agent3trans_test[0] - agent3base_test[0]
-        # agent3diff_arr.append(agent3diff)
+    #     agent3diff = agent3trans_test[0] - agent3base_test[0]
+    #     agent3diff_arr.append(agent3diff)
 
 
-        # print('Agent 2 baseline:', agent2base_test)
-        # print('Agent 2 transfer:', agent2trans_test)
-        # print('Agent 3 baseline:', agent3base_test)
-        # print('Agent 3 transfer:', agent3trans_test)
+    #     print('Agent 2 baseline:', agent2base_test)
+    #     print('Agent 2 transfer:', agent2trans_test)
+    #     print('Agent 3 baseline:', agent3base_test)
+    #     print('Agent 3 transfer:', agent3trans_test)
         
     
-    n_bins = 20
-    plt.ion()
-    plt.hist(agent2diff_arr, bins=n_bins)
+    # n_bins = 20
+    # plt.ion()
+    # plt.hist(agent2diff_arr, bins=n_bins)
     # fig, axs = plt.subplots(1, 2, sharey=True, tight_layout=True)
     # axs[0].hist(agent2diff_arr, bins=n_bins)
     # axs[1].hist(agent3diff_arr, bins=n_bins)
-    plt.show()
+    # plt.show()
     
     import code; code.interact(local=vars())
