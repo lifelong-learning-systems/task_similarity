@@ -11,8 +11,9 @@ import tasksim.structural_similarity as sim
 class MDPGraphEnv(gym.Env):
 
     # TODO: how does POMDP impact the metric?
-    def __init__(self, graph: gen.MDPGraph, obs_size=7, random_state=None):
+    def __init__(self, graph: gen.MDPGraph, obs_size=7, random_state=None, fixed_start=None):
         super(MDPGraphEnv, self).__init__()
+        self.fixed_start = fixed_start
         self.random_state = random_state if random_state is not None else np.random
         supported_strats = [gen.ActionStrategy.NOOP_EFFECT, gen.ActionStrategy.WRAP_NOOP_EFFECT]
         # TODO: change from assertion to throw? Or just don't take graph instance; take grid, prob, etc. instead
@@ -45,7 +46,8 @@ class MDPGraphEnv(gym.Env):
         if state is None:
             valid_states = np.where(self.grid.flatten() == 0)[0]
             assert len(valid_states) > 0, 'No possible start states!'
-            state = self.random_state.choice(valid_states)
+            state = self.random_state.choice(valid_states) if self.fixed_start is None else self.fixed_start
+            #assert state in valid_states, 'cannot start in specified state'
         row, col = self.row_col(state)
         assert 0 <= row < self.height and 0 <= col < self.width, 'Invalid start state: out of grid'
         assert self.grid[row, col] == 0, 'Invalid start state: non-zero grid entry'

@@ -14,6 +14,7 @@ import json
 from os import path
 import curriculum_tools
 from statistics import mean
+import seaborn as sns
 
 import argparse
 
@@ -86,6 +87,11 @@ class QTrainer:
     # Return new instance of QTrainer with transfered weights
     # pass in S, A as distances/metrics
     def transfer_to(self, other, direct_transfer=True, S=None, A=None):
+        
+        if direct_transfer:
+            other.Q = np.copy(self.Q)
+            return
+        
         if A is None or S is None:
             S, A, _, _ = self.env.graph.compare(other.env.graph)
         S = 1 - S
@@ -160,20 +166,40 @@ class QTrainer:
     def compute_action(self, _):
         return self._choose_action()
 
-    def run(self, num_episodes=5000):
+    def run(self, num_iters=7500, episodic=True):
         
-        episodes = list(range(num_episodes))
-        for _ in progress_bar(episodes, prefix='Q_training', suffix='Complete'):
+        episodes = list(range(num_iters))
+        steps = list(range(num_iters))
+
         
+        if episodic:    
+            for _ in progress_bar(episodes, prefix='Q_training(episodic)', suffix='Complete'):
+            
+                self.total_rewards = 0
+                obs = self.env.reset()
+                done = False
+
+                while not done:
+                    obs, reward, done, _ = self.step()
+                    self.total_rewards += reward
+
+                self.rewards.append(self.total_rewards)
+
+        elif not episodic:
+
             self.total_rewards = 0
             obs = self.env.reset()
             done = False
-
-            while not done:
+            for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
+                if done:
+                    obs = self.env.reset()
+                    self.rewards.append(self.total_rewards)
+                
                 obs, reward, done, _ = self.step()
                 self.total_rewards += reward
 
-            self.rewards.append(self.total_rewards)
+                
+                
         
         if self.save == True:
             self.save_table()
@@ -185,7 +211,7 @@ class QTrainer:
             data = {}
             data['lr'] = self.lr
             data['gamma'] = self.gamma
-            data['epsion'] = self.epsilon
+            data['epsilon'] = self.epsilon
             data['min_epsilon'] = self.min_epsilon
             data['max_epsilon'] = self.max_epsilon
             data['decay'] = self.decay
@@ -204,65 +230,95 @@ class QTrainer:
 def create_grids():
     
 
-    def ravel(row, col, rows=7, cols=7):
+    def ravel_base(row, col, rows=7, cols=7):
         return row*cols + col
 
-    def unravel(idx, rows=7, cols=7):
+    def unravel_base(idx, rows=7, cols=7):
         return (idx // cols, idx % cols)
 
     #TODO put goal in top right (on diagonal down-left), remove obstacles, deterministic do "curriculum" with goal in all other possible squares
     #in each grid, put difference in performance over (50?) runs, for goal in each location 
     #create heatmap for each
     #do the same for task similarity
+    ENV_SHAPE = (7, 7)
+    ravel = lambda x, y: ravel_base(x, y, *ENV_SHAPE)
+    unravel = lambda x: unravel_base(x, *ENV_SHAPE)
 
-    base_env = EnvironmentBuilder((9, 9)) \
+    base_env = EnvironmentBuilder(ENV_SHAPE) \
+            .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
             .set_obstacles(obstacle_prob=0.0) \
-            .set_goals([ravel(1, 7, 9, 9)]) \
+            .set_goals([ravel(1, 5)]) \
             .set_success_prob(1.0) \
+            .set_fixed_start(ravel(5, 1)) \
             .build()
-    
+        
     envs = []
 
     for goal_loc in range(base_env.grid.shape[0] * base_env.grid.shape[1]):
-        curr_env = EnvironmentBuilder((base_env.grid.shape)) \
+        curr_env = EnvironmentBuilder(ENV_SHAPE) \
+                .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
                 .set_obstacles(obstacle_prob=0.0) \
                 .set_goals([goal_loc]) \
                 .set_success_prob(1.0) \
+                .set_fixed_start(ravel(5, 1)) \
                 .build()
         envs.append(curr_env)
 
     return base_env, envs
 
+def save_data(perf, task):
+    with open('tasksim_performance_no_wrap_step-wise.json', 'w') as outfile:
+            data = {}
+            data['performance'] = perf.tolist()
+            data['tasksim'] = task.tolist()
+            json.dump(data, outfile)
+
+def ravel(row, col, rows=7, cols=7):
+    return row*cols + col
+
+def unravel(idx, rows=7, cols=7):
+    return (idx // cols, idx % cols)
+
+
+#TODO rerun with fixed start loc
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', action='store_true', help='whether to disable learning')
     args = parser.parse_args()
     test = args.test
 
     base_env, envs = create_grids()
-    base_trainer = QTrainer(base_env, agent_path="base_agent.json")
-    base_trainer.run(10000)
+    base_trainer = QTrainer(base_env, agent_path="base_agent_no_wrap_step-wise.json")
+    base_trainer.run(5000)
 
-    similiarity_scores = []
-    performance_gains = []
-    envID = 1
+    similarity_scores = []
+    performance_list = []
+    envID = 0
     for env in envs:
-        print("------------------Env {}------------------".format(envID))
-        envID += 1
+        env_coord=(envID // env.grid.shape[0], envID % env.grid.shape[1])
+        print("------------------Env {}, coord {}------------------".format(envID, env_coord))
+        envID+=1
+
         S, A, num_iters, _ = env.graph.compare(base_env.graph)
         score = 1 - sim.final_score(S)
-        similiarity_scores.append(score)
-
+        similarity_scores.append(score)
+        #import pdb; pdb.set_trace()
         performance_runs = []
         num_trials = 5
-        num_episodes = 200
-        for i in range(num_trials):
+        num_steps = 200
 
-            trainer = QTrainer(env, decay=1e-4)
+        if env_coord == (5, 1):
+            performance_list.append(1.0)
+            continue
+
+        for _ in range(num_trials):
+
+            trainer = QTrainer(env, decay=1e-3)
 
             base_trainer.transfer_to(trainer, direct_transfer=False)
 
-            trainer.run(num_episodes=num_episodes)
+            trainer.run(num_iters=num_steps, episodic=False)
 
             trainer_test = trainer.eval()
 
@@ -270,9 +326,32 @@ if __name__ == '__main__':
             performance_runs.append(performance)
 
         performance_avg = mean(performance_runs)
-        performance_gains.append(performance_avg)
+        performance_list.append(performance_avg)
     
+
+    performance_list = np.array((performance_list))
+    performance_list_res = performance_list.reshape(base_env.grid.shape[0], base_env.grid.shape[1])
+
+    tasksim_list = np.array((similarity_scores))
+    tasksim_list_res = tasksim_list.reshape(base_env.grid.shape[0], base_env.grid.shape[1])
     plt.ion()
-    plt.scatter(performance_gains, similiarity_scores)
+    fig, ax = plt.subplots(figsize=(10,10))
+
+    sns.heatmap(performance_list_res, square=True, ax=ax)
+    plt.yticks(rotation=0,fontsize=16);
+    plt.xticks(fontsize=12);
+    plt.tight_layout()
+    plt.savefig('performance_fixed_no_wrap_step-wise.png')
+
+    fig, ax = plt.subplots(figsize=(10,10))
+
+    sns.heatmap(tasksim_list_res, square=True, ax=ax)
+    plt.yticks(rotation=0,fontsize=16);
+    plt.xticks(fontsize=12);
+    plt.tight_layout()
+    plt.savefig('tasksim_new_step-wise.png')
+
     plt.show()
+
+    save_data(performance_list, tasksim_list)
     import code; code.interact(local=vars())

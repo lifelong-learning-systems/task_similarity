@@ -36,6 +36,7 @@ class EnvironmentBuilder:
         self.step_reward = 0
         self.strat = gen.ActionStrategy.WRAP_NOOP_EFFECT
         self.obs_size = 7
+        self.fixed_start = None
     
     def set_obs_size(self, obs_size):
         self.obs_size = obs_size
@@ -72,6 +73,10 @@ class EnvironmentBuilder:
                     self.obstacle_locations.append(self.flatten(i, j))
         return self
     
+    def set_fixed_start(self, fixed_start=None):
+        self.fixed_start=fixed_start
+        return self
+        
     # TODO: rotate?
     #def rotate(self, )
         
@@ -107,7 +112,7 @@ class EnvironmentBuilder:
         transition_random_state = self.coalesce_random(transition_random_state)
         if self.transition_noise > 0:
             G = add_noise(G, self.transition_noise, transition_random_state)
-        env = MDPGraphEnv(graph=G, obs_size=self.obs_size, random_state=env_random_state)
+        env = MDPGraphEnv(graph=G, obs_size=self.obs_size, random_state=env_random_state, fixed_start=self.fixed_start)
         return env
     
     # Utility functions
