@@ -1,6 +1,7 @@
 from curriculum_tools import curriculum
 from numpy.core.fromnumeric import var
 from numpy.lib.function_base import average
+from numpy.lib.npyio import save
 import tasksim.gridworld_generator as gen
 from tasksim.train_environment import EnvironmentBuilder, test_env
 from tasksim.environment import MDPGraphEnv
@@ -69,7 +70,7 @@ class QTrainer:
             
             self.lr = obj['lr']
             self.gamma = obj['gamma']
-            self.epsilon = obj['epsion']
+            self.epsilon = obj['epsilon']
             self.min_epsilon = obj['min_epsilon']
             self.max_epsilon = obj['max_epsilon']
             self.decay = obj['decay']
@@ -178,15 +179,15 @@ class QTrainer:
                 self.total_rewards = 0
                 obs = self.env.reset()
                 done = False
-
-                while not done:
+                steps = 0
+                while not done and steps < 10000:
                     obs, reward, done, _ = self.step()
                     self.total_rewards += reward
+                    steps += 1
 
                 self.rewards.append(self.total_rewards)
 
         elif not episodic:
-
             self.total_rewards = 0
             obs = self.env.reset()
             done = False
@@ -227,19 +228,14 @@ class QTrainer:
         return test_env(self.env, self)
 
        
-def create_grids():
+def create_grids(config=None):
     
-
     def ravel_base(row, col, rows=7, cols=7):
         return row*cols + col
 
     def unravel_base(idx, rows=7, cols=7):
         return (idx // cols, idx % cols)
 
-    #TODO put goal in top right (on diagonal down-left), remove obstacles, deterministic do "curriculum" with goal in all other possible squares
-    #in each grid, put difference in performance over (50?) runs, for goal in each location 
-    #create heatmap for each
-    #do the same for task similarity
     ENV_SHAPE = (7, 7)
     ravel = lambda x, y: ravel_base(x, y, *ENV_SHAPE)
     unravel = lambda x: unravel_base(x, *ENV_SHAPE)
@@ -266,8 +262,8 @@ def create_grids():
 
     return base_env, envs
 
-def save_data(perf, task):
-    with open('tasksim_performance_no_wrap_step-wise.json', 'w') as outfile:
+def save_data(perf, task, file_name):
+    with open('data_' + file_name + '.json', 'w') as outfile:
             data = {}
             data['performance'] = perf.tolist()
             data['tasksim'] = task.tolist()
@@ -279,18 +275,41 @@ def ravel(row, col, rows=7, cols=7):
 def unravel(idx, rows=7, cols=7):
     return (idx // cols, idx % cols)
 
+def load_config(config_file_path):
+    pass
 
-#TODO rerun with fixed start loc
+#TODO based on arguments passed in, create log files
+#TODO check out tensorboard, might help
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--test', action='store_true', help='whether to disable learning')
-    args = parser.parse_args()
-    test = args.test
+    parser.add_argument('--agent_path', type=str, default=None, help='path to save baseline agent')
+    parser.add_argument('--save_agent', choices=['true', 'false', 't', 'f', 'True', 'False'], default='true', help='whether to save baseline agent or not')
+    parser.add_argument('--config_file', type=str, default=None, help='json filepath for generating specific training configurations')
+    parser.add_argument('--transfer_type', type=str, choices=['direct', 'inderect', 'copy'], default='copy', help='type of transfer method')
+    parser.add_argument('--num_iters_base', type=int, default=5000, help='number of steps/episodes for base agent (depends on episodic_base)')
+    parser.add_argument('--num_iters_transfer', type=int, default=200, help='number of steps/episodes for transfer agent (depends on episodic_transfer)')
+    parser.add_argument('--episodic_base', choices=['true', 'false', 't', 'f', 'True', 'False'], default='true', help='whether to run baseline agent training iterations in episodes or timesteps (true for episodes, false for timesteps)')
+    parser.add_argument('--episodic_transfer', choices=['true', 'false', 't', 'f', 'True', 'False'], default='false', help='whether to run transfer agent iterations in episodes or timesteps (true for episodes, false for timesteps)')
+    parser.add_argument('--outfile', type=str, required=True, help='body of output file for colormap images and performance data (do not include filetype suffix)')
+    parser.add_argument('--num_trials', type=int, default=5, help='number of transfer training trials')
 
-    base_env, envs = create_grids()
-    base_trainer = QTrainer(base_env, agent_path="base_agent_no_wrap_step-wise.json")
-    base_trainer.run(5000)
+    args = parser.parse_args()
+    agent_path = args.agent_path
+    save_agent = True if args.save_agent in ['true', 'True', 't'] else False
+    config_file_name = args.config_file
+    direct_transfer = True if args.transfer_type in ['direct', 'copy'] else False
+    num_iters_base = args.num_iters_base
+    num_iters_transfer = args.num_iters_transfer
+    episodic_base = True if args.episodic_base in ['true', 'True', 't'] else False
+    episodic_transfer = True if args.episodic_transfer in ['true', 'True', 't'] else False
+    outfile = args.outfile
+    config = load_config(args.config_file)
+    num_trials = max(1, args.num_trials)
+
+    base_env, envs = create_grids(config)
+    base_trainer = QTrainer(base_env, agent_path=agent_path, save=save_agent)
+    base_trainer.run(num_iters_base, episodic=episodic_base)
 
     similarity_scores = []
     performance_list = []
@@ -305,10 +324,11 @@ if __name__ == '__main__':
         similarity_scores.append(score)
         #import pdb; pdb.set_trace()
         performance_runs = []
-        num_trials = 5
-        num_steps = 200
 
-        if env_coord == (5, 1):
+
+        
+        
+        if env_coord == (env.fixed_start // env.grid.shape[0], env.fixed_start % env.grid.shape[1]):
             performance_list.append(1.0)
             continue
 
@@ -316,9 +336,9 @@ if __name__ == '__main__':
 
             trainer = QTrainer(env, decay=1e-3)
 
-            base_trainer.transfer_to(trainer, direct_transfer=False)
+            base_trainer.transfer_to(trainer, direct_transfer=direct_transfer)
 
-            trainer.run(num_iters=num_steps, episodic=False)
+            trainer.run(num_iters=num_iters_transfer, episodic=episodic_transfer)
 
             trainer_test = trainer.eval()
 
@@ -341,7 +361,7 @@ if __name__ == '__main__':
     plt.yticks(rotation=0,fontsize=16);
     plt.xticks(fontsize=12);
     plt.tight_layout()
-    plt.savefig('performance_fixed_no_wrap_step-wise.png')
+    plt.savefig('performance_' + outfile + '.png')
 
     fig, ax = plt.subplots(figsize=(10,10))
 
@@ -349,9 +369,9 @@ if __name__ == '__main__':
     plt.yticks(rotation=0,fontsize=16);
     plt.xticks(fontsize=12);
     plt.tight_layout()
-    plt.savefig('tasksim_new_step-wise.png')
+    plt.savefig('tasksim_' + outfile + '.png')
 
     plt.show()
 
-    save_data(performance_list, tasksim_list)
+    save_data(performance_list, tasksim_list, outfile)
     import code; code.interact(local=vars())
