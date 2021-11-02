@@ -24,6 +24,7 @@ class InitStrategy(Enum):
     ONES = 2
     IDENTITY = 3
 
+# TODO: normalize by dividing by a constant?
 # OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
 # I like having c_a as 0.5, since it evenly balances d_rwd and d_emd, then c_s around 0.99-0.999ish
 # TODO: incorporate rtol & atol by being inspired by numpy.isclose
@@ -51,6 +52,11 @@ def final_score(S, c_n=1.0):
     #d_num_states = (1 - 1/(abs(ns - nt) + 1))
     d_num_states = 1 - min(ns/nt, nt/ns)
     return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
+def final_score_song(S):
+    ns, nt = S.shape
+    a = np.array([1/ns for _ in range(ns)])
+    b = np.array([1/nt for _ in range(nt)])
+    return 1 - ot.emd2(a, b, 1-S)
 
 def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
@@ -194,11 +200,69 @@ def norm(mat1, mat2, method):
     ret2 = combined[mat1.size:].reshape(mat2.shape)
     return ret1, ret2
 
+
+
+def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1, out_neighbors_S2,
+                                     c=DEFAULT_CA, stop_tol=1e-4, max_iters=1e5):
+    _, n_states1 = action_dists1.shape
+    _, n_states2 = action_dists2.shape
+    states1 = list(range(n_states1))
+    states2 = list(range(n_states2))
+
+    d = np.zeros((n_states1, n_states2))
+    d_prime = np.zeros((n_states1, n_states2))
+    delta = np.inf
+    def compute_exp(P, R):
+        n = P.shape[0]
+        # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
+        ret_pos = np.zeros((n,))
+        for i in range(n):
+            probs, rewards = P[i], R[i]
+            ret_pos[i] = np.dot(probs, rewards)
+        return ret_pos
+    expected_rewards_pos1 = compute_exp(action_dists1, reward_matrix1)
+    expected_rewards_pos2 = compute_exp(action_dists2, reward_matrix2)
+    def compute_diff(pos1, pos2):
+        diff = np.zeros((len(pos1), len(pos2)))
+        for i in range(len(pos1)):
+            for j in range(len(pos2)):
+                diff[i][j] = abs(pos1[i] - pos2[j])
+        return diff
+    # Paper assumes s' doesn't matter for reward; since our MDPs are stochastic, it does matter;
+    # thus R will be expected reward after taking action a_i in state s_i
+    cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2)
+
+    # TODO: add performance optimizations as needed
+    while not (delta < stop_tol):
+        for s_i, s_j in zip(states1, states2):
+            actions_i = out_neighbors_S1[s_i]
+            actions_j = out_neighbors_S2[s_j]
+            # Limited to paper specifics
+            assert len(actions_i) == len(actions_j), 'For Song metric, actions must have 1:1 correspondence'
+            # Assumes 1:1 correspondence in effect
+            for a_i, a_j in zip(actions_i, actions_j):
+                P_a_i = action_dists1[a_i]
+                P_a_j = action_dists2[a_j]
+                d_emd = emd_c(P_a_i.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                              P_a_j.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                              d.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), len(P_a_i), len(P_a_j), int(max_iters))
+                d_rwd = cached_reward_differences[a_i, a_j]
+                # TODO: what if this is greater than 1? Is that still okay?? Should we scale d_rwd by (1-c)?
+                #import pdb; pdb.set_trace()
+                tmp = (1 - c)*d_rwd + c*d_emd
+                assert tmp <= 1, 'd_rwd & d_emd combination resulted in value greater than 1'
+                d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
+        delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
+        for s_i, s_j in zip(states1, states2):
+            d[s_i, s_j] = d_prime[s_i, s_j]
+    return d
+
+
 # TODO: also consider (lower importance) other granularities besides each state (subgraph???)
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                                 stop_atol=1e-4, max_iters=1e5,
-                                init_strategy: InitStrategy = InitStrategy.ZEROS, self_similarity=False):
+                                init_strategy: InitStrategy = InitStrategy.ONES, self_similarity=False):
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape

@@ -253,9 +253,14 @@ class MDPGraph:
             return S_upper_right, A_upper_right, num_iters, done
         P1, P2, R1, R2, out_s1, out_s2 = self.P, other.P, self.R, other.R, self.out_s, other.out_s
         return sim.cross_structural_similarity(P1, P2, R1, R2, out_s1, out_s2, c_a=c_a, c_s=c_s)
+
+    def compare_song(self, other, c=DEFAULT_CA):
+        return sim.cross_structural_similarity_song(self.P, other.P, self.R, other.R, self.out_s, other.out_s, c=c)
     # using convention from POT
     def compare2(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         return sim.final_score(self.compare(other, c_a, c_s))
+    def compare2_song(self, other, c=DEFAULT_CA):
+        return sim.final_score_song(self.compare_song(other, c))
     
     def compare2_norm(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         return sim.normalize_score(self.compare2(other, c_a, c_s), c_a, c_s)
