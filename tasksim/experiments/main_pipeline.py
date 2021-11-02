@@ -17,14 +17,14 @@ FIG_OUT = 'figures_baseline'
 def generate_graphs(sizes, success_prob=0.9, strat=gen.ActionStrategy.SUBSET):
     return [gen.MDPGraph.from_grid(gen.create_grid(sz), success_prob, strat=strat) for sz in sizes]
 
-def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, xticks=None, yticks=None, upper=True, standard_range=True):
+def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, xticks=None, yticks=None, upper=True, standard_range=True, use_song=False):
     if np.array(graphs).ndim == 1:
         graphs = [[(graphs[i], graphs[j]) for j in range(len(graphs))] for i in range(len(graphs))]
     ret = np.zeros((len(graphs), len(graphs[0])))
     idxs = [(i, j) for i in range(len(graphs)) for j in range(len(graphs[0]))]
     def comp(i, j):
         g1, g2 = graphs[i][j]
-        return g1.compare2(g2)
+        return g1.compare2(g2) if not use_song else g1.compare2_song(g2)
     if print_progress:
         for (i, j) in util.progress_bar(idxs, prefix='Progress:', suffix='Complete'):
             ret[i, j] = comp(i, j)
@@ -37,44 +37,51 @@ def compare_graphs(graphs, verify_metric=True, print_progress=True, title=None, 
         return ret, ax_heatmap, metric
     return ret, ax_heatmap
 
-def process_print_graphs(graphs, title, ticks=None, xticks=None, yticks=None, upper=True, standard_range=True):
+def process_print_graphs(graphs, title, ticks=None, xticks=None, yticks=None, upper=True, standard_range=True, use_song=False):
     print(f'\n{title}')
     if ticks is not None:
         xticks = ticks
         yticks = ticks
-    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, xticks=xticks, yticks=yticks, upper=upper, standard_range=standard_range)
+    comp, heatmap, metric = compare_graphs(graphs, verify_metric=True, title=title, xticks=xticks, yticks=yticks, upper=upper, standard_range=standard_range, use_song=use_song)
     #print(f'Metric valid (order, triangle inequality, symmetry): {metric}')
     print(comp if not upper else np.triu(comp))
     plt.figure(plt.get_fignums()[-1]).savefig(f'{FIG_OUT}/{title.lower().replace(" ", "_")}.png')
     return comp, heatmap, metric
 
-def shape_comparisons(line_sizes=None, grid_sizes=None):
+def shape_comparisons(line_sizes=None, grid_sizes=None, use_song=False):
     if line_sizes is None:
         line_sizes = range(2, 12)
     if grid_sizes is None:
         grid_sizes = range(2, 12)
     line_shapes = [(1, i) for i in line_sizes]
     grid_shapes = [(i, i) for i in grid_sizes]
-    lines = generate_graphs(line_shapes)
-    grids = generate_graphs(grid_shapes)
-    lines_noops = generate_graphs(line_shapes, noops=gen.ActionStrategy.NOOP_ACTION)
-    grids_noops = generate_graphs(grid_shapes, noops=gen.ActionStrategy.NOOP_ACTION)
-    process_print_graphs(lines, 'Line Similarities', ticks=[str(s[1]) for s in line_shapes])
-    process_print_graphs(grids, 'Grid Similarities', ticks=[str(s[1]) for s in grid_shapes])
-    process_print_graphs(lines_noops, 'Line with No-ops Similarities', ticks=[str(s[1]) for s in line_shapes])
-    process_print_graphs(grids_noops, 'Grid with No-ops Similarities', ticks=[str(s[1]) for s in grid_shapes])
+    lines = generate_graphs(line_shapes, strat=gen.ActionStrategy.WRAP_NOOP_EFFECT)
+    grids = generate_graphs(grid_shapes, strat=gen.ActionStrategy.WRAP_NOOP_EFFECT)
+    song_str = '' if not use_song else ' Song'
+    process_print_graphs(lines, 'Line Similarities Wrap' + song_str, ticks=[str(s[1]) for s in line_shapes], use_song=use_song)
+    process_print_graphs(grids, 'Grid Similarities Wrap' + song_str, ticks=[str(s[1]) for s in grid_shapes], use_song=use_song)
+    # lines = generate_graphs(line_shapes)
+    # grids = generate_graphs(grid_shapes)
+    # lines_noops = generate_graphs(line_shapes, noops=gen.ActionStrategy.NOOP_ACTION)
+    # grids_noops = generate_graphs(grid_shapes, noops=gen.ActionStrategy.NOOP_ACTION)
+    # process_print_graphs(lines, 'Line Similarities', ticks=[str(s[1]) for s in line_shapes], use_song=use_song)
+    # process_print_graphs(grids, 'Grid Similarities', ticks=[str(s[1]) for s in grid_shapes], use_song=use_song)
+    # process_print_graphs(lines_noops, 'Line with No-ops Similarities', ticks=[str(s[1]) for s in line_shapes], use_song=use_song)
+    # process_print_graphs(grids_noops, 'Grid with No-ops Similarities', ticks=[str(s[1]) for s in grid_shapes], use_song=use_song)
 
-def success_prob_comparisons(grid_size=7, probs=None):
+def success_prob_comparisons(grid_size=7, probs=None, use_song=False):
     if probs is None:
         probs = np.arange(0.1, 1.1, 0.1)
     grid = gen.create_grid((grid_size, grid_size))
-    graphs = [gen.MDPGraph.from_grid(grid, prob, strat=gen.ActionStrategy.SUBSET) for prob in probs]
-    process_print_graphs(graphs, f'Action Success Probabilities {grid_size}x{grid_size}', ticks=[f'{prob:.1f}' for prob in probs])
+    graphs = [gen.MDPGraph.from_grid(grid, prob, strat=gen.ActionStrategy.WRAP_NOOP_EFFECT) for prob in probs]
+    song_str = '' if not use_song else ' Song'
+    process_print_graphs(graphs, f'Action Success Probabilities {grid_size}x{grid_size}' + song_str, ticks=[f'{prob:.1f}' for prob in probs], standard_range=False, use_song=use_song)
 
-def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_state=None):
+def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_state=None, use_song=False):
     if random_state is None:
         random_state = np.random
     
+    song_str = '' if not use_song else ' Song'
     def add_noise(G, percent):
         G = G.copy()
         P = G.P
@@ -95,15 +102,15 @@ def transition_prob_noise(grid_size=7, success_prob=0.75, trials=10, random_stat
             out_a[i] = normed_row.copy()
         return G
     grid = gen.create_grid((grid_size, grid_size))
-    base = gen.MDPGraph.from_grid(grid, success_prob, strat=gen.ActionStrategy.SUBSET)
+    base = gen.MDPGraph.from_grid(grid, success_prob, strat=gen.ActionStrategy.WRAP_NOOP_EFFECT)
     noise_levels = np.arange(0, 0.5, 0.05)
     comparisons = np.zeros((trials, len(noise_levels)))
     idxs = [(i, j, noise) for i in range(trials) for j, noise in enumerate(noise_levels)]
     graphs = [[(base, add_noise(base, noise)) for j, noise in enumerate(noise_levels)] for i in range(trials)]
-    title = f'Transition Noise {grid_size}x{grid_size}, {success_prob}'
+    title = f'Transition Noise {grid_size}x{grid_size}, {success_prob}' + song_str
     xticks = [f'{noise:.2f}' for noise in noise_levels]
     yticks = [str(trial) for trial in range(1, 1+trials)]
-    process_print_graphs(graphs, title=title, xticks=xticks, yticks=yticks, upper=False, standard_range=False)
+    process_print_graphs(graphs, title=title, xticks=xticks, yticks=yticks, upper=False, standard_range=False, use_song=use_song)
 
 if __name__ == '__main__':
     plt.ion()
@@ -115,10 +122,16 @@ if __name__ == '__main__':
     np.set_printoptions(linewidth=200, precision=num_print_decimals, suppress=True)
 
     # Main process
+    shape_comparisons(use_song=True)
     shape_comparisons()
+
+    success_prob_comparisons(use_song=True)
     success_prob_comparisons()
-    # Introduce some determinism
+
+    # # Introduce some determinism
     random_seed = 314159265
     random_state = np.random.RandomState(random_seed)
+    transition_prob_noise(random_state=random_state, use_song=True)
+    transition_prob_noise(grid_size=3, random_state=random_state, use_song=True)
     transition_prob_noise(random_state=random_state)
     transition_prob_noise(grid_size=3, random_state=random_state)

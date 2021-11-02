@@ -212,25 +212,47 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
     d = np.zeros((n_states1, n_states2))
     d_prime = np.zeros((n_states1, n_states2))
     delta = np.inf
+    # def compute_exp(P, R):
+    #     n = P.shape[0]
+    #     # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
+    #     ret_pos = np.zeros((n,))
+    #     for i in range(n):
+    #         probs, rewards = P[i], R[i]
+    #         ret_pos[i] = np.dot(probs, rewards)
+    #     return ret_pos
+    # expected_rewards_pos1 = compute_exp(action_dists1, reward_matrix1)
+    # expected_rewards_pos2 = compute_exp(action_dists2, reward_matrix2)
+    # def compute_diff(pos1, pos2):
+    #     diff = np.zeros((len(pos1), len(pos2)))
+    #     for i in range(len(pos1)):
+    #         for j in range(len(pos2)):
+    #             diff[i][j] = abs(pos1[i] - pos2[j])
+    #     return diff
+    # # thus R will be expected reward after taking action a_i in state s_i
+    # cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2)
+
+    # Paper assumes s' doesn't matter for reward; since our MDPs are stochastic, it does matter;
+    # For fair comparison, using same reward function as other metric
     def compute_exp(P, R):
         n = P.shape[0]
         # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
         ret_pos = np.zeros((n,))
+        ret_neg = np.zeros((n,))
         for i in range(n):
             probs, rewards = P[i], R[i]
-            ret_pos[i] = np.dot(probs, rewards)
-        return ret_pos
-    expected_rewards_pos1 = compute_exp(action_dists1, reward_matrix1)
-    expected_rewards_pos2 = compute_exp(action_dists2, reward_matrix2)
-    def compute_diff(pos1, pos2):
+            pos, neg = rewards >= 0, rewards < 0
+            ret_pos[i] = np.dot(probs[pos], rewards[pos])
+            ret_neg[i] = np.dot(probs[neg], rewards[neg])
+        return ret_pos, ret_neg
+    expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
+    expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
+    def compute_diff(pos1, pos2, neg1, neg2):
         diff = np.zeros((len(pos1), len(pos2)))
         for i in range(len(pos1)):
             for j in range(len(pos2)):
-                diff[i][j] = abs(pos1[i] - pos2[j])
+                diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
         return diff
-    # Paper assumes s' doesn't matter for reward; since our MDPs are stochastic, it does matter;
-    # thus R will be expected reward after taking action a_i in state s_i
-    cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2)
+    cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
 
     # TODO: add performance optimizations as needed
     while not (delta < stop_tol):
