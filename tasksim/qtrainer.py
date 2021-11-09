@@ -16,8 +16,8 @@ from os import path
 import curriculum_tools
 from statistics import mean
 import seaborn as sns
-
 import argparse
+from collections import deque
 
 #Reference https://medium.com/swlh/introduction-to-q-learning-with-openai-gym-2d794da10f3d
 class QTrainer:
@@ -121,13 +121,13 @@ class QTrainer:
                             w = 1 if S[s_i, :].argmax() == s_j else 0
                         other.Q[s_i, a_i] += w*self.Q[s_j, a_j]
 
-    def reset(self):
+    def reset(self, center=True):
         self.episode += 1
-        return self.env.reset()
+        return self.env.reset(center=False)
 
     #step using Q table or provided action
-    def step(self, action=None):
-
+    def step(self, action=None, center=True):
+        
         if(action == None):
             action = self._choose_action()
 
@@ -146,11 +146,10 @@ class QTrainer:
             self.Q[old_state, action] = self.Q[old_state, action]+self.lr*(reward+self.gamma*np.max(self.Q[new_state, :])-self.Q[old_state, action])
             self.epsilon = max(0, self.epsilon - self.decay)
             
-        
         row, col = self.env.row_col(state)
         done = self.env.grid[row, col] == 2
             
-        return self.env.gen_obs(), reward, done, {}
+        return self.env.gen_obs(center=center), reward, done, {}
 
     #choose an acation based on epsilon greedy choice    
     def _choose_action(self):
@@ -167,23 +166,40 @@ class QTrainer:
     def compute_action(self, _):
         return self._choose_action()
 
-    def run(self, num_iters=7500, episodic=True):
+    def run(self, num_iters=7500, episodic=True, early_stopping=False, threshold=.8):
         
+        total_episode = 0
+        total_step = 0
+        performance = 0
         episodes = list(range(num_iters))
         steps = list(range(num_iters))
-
         
+        optimal = self.compute_optimal_path(self.env.fixed_start) if early_stopping and self.env.fixed_start is not None else None
+
         if episodic:    
             for _ in progress_bar(episodes, prefix='Q_training(episodic)', suffix='Complete'):
             
                 self.total_rewards = 0
                 obs = self.env.reset()
                 done = False
-                steps = 0
-                while not done and steps < 10000:
+                step = 0
+                
+                
+                while not done and step < 5000:
                     obs, reward, done, _ = self.step()
                     self.total_rewards += reward
-                    steps += 1
+                    step += 1
+                    total_step += 1
+                
+                total_episode += 1
+
+                if optimal is not None: 
+                    performance = optimal / step
+                    if performance >= threshold:
+                        if self.save:
+                            self.save_table()
+                        return total_episode, total_step, performance
+                    
 
                 self.rewards.append(self.total_rewards)
 
@@ -191,19 +207,31 @@ class QTrainer:
             self.total_rewards = 0
             obs = self.env.reset()
             done = False
+            step = 0
             for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
                 if done:
                     obs = self.env.reset()
                     self.rewards.append(self.total_rewards)
+                    
+                    if optimal is not None:
+                        performance = optimal / step
+                        if performance >= threshold:
+                            if self.save:
+                                self.save_table()
+                            return total_episode, total_step, performance
+
+                    step = 0
+                    total_episode += 1
                 
                 obs, reward, done, _ = self.step()
                 self.total_rewards += reward
+                step += 1
+                total_step += 1
 
-                
-                
-        
-        if self.save == True:
+        if self.save:
             self.save_table()
+        
+        return total_episode, total_step, performance 
 
 
     def save_table(self):
@@ -227,8 +255,69 @@ class QTrainer:
         self.learning = False
         return test_env(self.env, self)
 
+    def compute_optimal_path(self, start_state):
+        graph = self.env.graph
+        grid = self.env.graph.grid
+        strat = self.env.graph.strat
+        rows, cols = grid.shape
+        height, width = grid.shape
+        optimal_action_grid = np.nan * np.zeros(graph.grid.shape)
+        optimal_path_len = np.zeros(graph.grid.shape)
+        q = deque() # q.append(x) -> pushes on to the right side, q.popleft() -> removes and returns from left
+        q.append((start_state, []))
+        found = None
+        visited = set()
+        while len(q):
+            cur_state, cur_path = q.popleft()
+            if cur_state in visited:
+                continue
+            visited.add(cur_state)
+            # left, right, up, down, noop
+            adjacent = gen.MDPGraph.get_valid_adjacent(cur_state, grid, strat)
+            filtered = [a for a in adjacent if a is not None]
+            out_actions = graph.out_s[cur_state]
+            assert len(out_actions) == len(filtered), 'darn, something went wrong'
+            for id, f in enumerate(filtered):
+                if f == cur_state:
+                    continue
+                looped = False
+                for path_state, _ in cur_path:
+                    if path_state == f:
+                        looped = True
+                        break
+                if looped:
+                    continue
+                action = out_actions[id]
+                row = f // width
+                col = f - width*row
+                next_path = [c for c in cur_path]
+                next_path.append((cur_state, action))
+                if grid[row, col] == 2:
+                    found = (f, next_path)
+                    break
+                else:
+                    q.append((f, next_path))
+            if found is not None:
+                break
+        if found is None:
+            return 0
+        _, goal_path = found
+        # goal_path is an optimal deterministic path from start_state to a goal_state
+        # graph.P: Actions - Distribution among States
+        for state, action in goal_path:
+            row = state // width
+            col = state - width*row
+            entry = optimal_action_grid[row, col]
+            if np.isnan(entry):
+                optimal_action_grid[row, col] = action
+            elif entry != action:
+                print('WARNING: found mismatched optimal entry???')
+                continue
+        return len(goal_path)
+
+
        
-def create_grids(config=None):
+def create_grids(config=None, goal_change=True):
     
     def ravel_base(row, col, rows=7, cols=7):
         return row*cols + col
@@ -243,24 +332,59 @@ def create_grids(config=None):
     base_env = EnvironmentBuilder(ENV_SHAPE) \
             .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
             .set_obstacles(obstacle_prob=0.0) \
-            .set_goals([ravel(1, 5)]) \
+            .set_goals([ravel(0, 6)]) \
             .set_success_prob(1.0) \
-            .set_fixed_start(ravel(5, 1)) \
+            .set_fixed_start(ravel(6, 0)) \
             .build()
         
     envs = []
 
-    for goal_loc in range(base_env.grid.shape[0] * base_env.grid.shape[1]):
-        curr_env = EnvironmentBuilder(ENV_SHAPE) \
-                .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
-                .set_obstacles(obstacle_prob=0.0) \
-                .set_goals([goal_loc]) \
-                .set_success_prob(1.0) \
-                .set_fixed_start(ravel(5, 1)) \
-                .build()
-        envs.append(curr_env)
+    if goal_change:
+        for goal_loc in range(base_env.grid.shape[0] * base_env.grid.shape[1]):
+            curr_env = EnvironmentBuilder(ENV_SHAPE) \
+                    .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
+                    .set_obstacles(obstacle_prob=0.0) \
+                    .set_goals([goal_loc]) \
+                    .set_success_prob(1.0) \
+                    .set_fixed_start(ravel(6, 6)) \
+                    .build()
+            envs.append(curr_env)
+
+    else:
+        for obstacle_loc in range(base_env.grid.shape[0] * base_env.grid.shape[1]):
+            
+            curr_env = EnvironmentBuilder(ENV_SHAPE) \
+                    .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
+                    .set_obstacles([ravel((unravel(obstacle_loc)[0] - 1) % ENV_SHAPE[0], (unravel(obstacle_loc)[1] - 1) % ENV_SHAPE[1]), obstacle_loc, ravel((unravel(obstacle_loc)[0] + 1) % ENV_SHAPE[0], (unravel(obstacle_loc)[1] + 1) % ENV_SHAPE[1])]) \
+                    .set_goals([ravel(0, 6)]) \
+                    .set_success_prob(1.0) \
+                    .set_fixed_start(ravel(6, 0)) \
+                    .build()
+            envs.append(curr_env)
 
     return base_env, envs
+
+def print_graphs(performance_list, similarity_scores, outfile):
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(10,10))
+
+    performance_list_res = performance_list.reshape(base_env.grid.shape[0], base_env.grid.shape[1])
+    tasksim_list_res = similarity_scores.reshape(base_env.grid.shape[0], base_env.grid.shape[1])
+    sns.heatmap(performance_list_res, square=True, ax=ax)
+    plt.yticks(rotation=0,fontsize=16)
+    plt.xticks(fontsize=12)
+    plt.tight_layout()
+    plt.savefig('performance_' + outfile + '.png')
+
+    fig, ax = plt.subplots(figsize=(10,10))
+
+    sns.heatmap(tasksim_list_res, square=True, ax=ax)
+    plt.yticks(rotation=0,fontsize=16)
+    plt.xticks(fontsize=12)
+    plt.tight_layout()
+    plt.savefig('tasksim_' + outfile + '.png')
+
+    plt.show()
 
 def save_data(perf, task, file_name):
     with open('data_' + file_name + '.json', 'w') as outfile:
@@ -270,7 +394,7 @@ def save_data(perf, task, file_name):
             json.dump(data, outfile)
 
 def ravel(row, col, rows=7, cols=7):
-    return row*cols + col
+    return (row % rows)*cols + (col % cols)
 
 def unravel(idx, rows=7, cols=7):
     return (idx // cols, idx % cols)
@@ -286,35 +410,44 @@ if __name__ == '__main__':
     parser.add_argument('--agent_path', type=str, default=None, help='path to save baseline agent')
     parser.add_argument('--save_agent', choices=['true', 'false', 't', 'f', 'True', 'False'], default='true', help='whether to save baseline agent or not')
     parser.add_argument('--config_file', type=str, default=None, help='json filepath for generating specific training configurations')
-    parser.add_argument('--transfer_type', type=str, choices=['direct', 'inderect', 'copy'], default='copy', help='type of transfer method')
+    parser.add_argument('--transfer_type', type=str, choices=['direct', 'inderect', 'copy', 'none'], default='copy', help='type of transfer method')
     parser.add_argument('--num_iters_base', type=int, default=5000, help='number of steps/episodes for base agent (depends on episodic_base)')
     parser.add_argument('--num_iters_transfer', type=int, default=200, help='number of steps/episodes for transfer agent (depends on episodic_transfer)')
     parser.add_argument('--episodic_base', choices=['true', 'false', 't', 'f', 'True', 'False'], default='true', help='whether to run baseline agent training iterations in episodes or timesteps (true for episodes, false for timesteps)')
     parser.add_argument('--episodic_transfer', choices=['true', 'false', 't', 'f', 'True', 'False'], default='false', help='whether to run transfer agent iterations in episodes or timesteps (true for episodes, false for timesteps)')
     parser.add_argument('--outfile', type=str, required=True, help='body of output file for colormap images and performance data (do not include filetype suffix)')
     parser.add_argument('--num_trials', type=int, default=5, help='number of transfer training trials')
-
+    parser.add_argument('--performance_metric', choices=['performance', 'steps_to_optimal'], default='performance', help='whether to measure performance (optimal/steps) or number of steps to get to optimal')
+    parser.add_argument('--strategy', choices=['goal_change', 'obstacle_change'], default='goal_change', help='for counterexamples, moving diagnonal obstacles, or for regular, changing goals')
+    
     args = parser.parse_args()
     agent_path = args.agent_path
     save_agent = True if args.save_agent in ['true', 'True', 't'] else False
     config_file_name = args.config_file
     direct_transfer = True if args.transfer_type in ['direct', 'copy'] else False
+    do_transfer = False if args.transfer_type == 'none' else True
     num_iters_base = args.num_iters_base
-    num_iters_transfer = args.num_iters_transfer
+    num_iters_transfer = args.num_iters_transfer if args.performance_metric == 'performance' else 500
     episodic_base = True if args.episodic_base in ['true', 'True', 't'] else False
-    episodic_transfer = True if args.episodic_transfer in ['true', 'True', 't'] else False
+    episodic_transfer = True if args.episodic_transfer in ['true', 'True', 't']  or args.performance_metric == 'steps_to_optimal' else False
     outfile = args.outfile
     config = load_config(args.config_file)
     num_trials = max(1, args.num_trials)
+    performance_metric = args.performance_metric
+    goal_change = True if args.strategy == 'goal_change' else False
 
-    base_env, envs = create_grids(config)
+    early_stopping = performance_metric == 'steps_to_optimal'
+
+    base_env, envs = create_grids(config, goal_change=goal_change)
     base_trainer = QTrainer(base_env, agent_path=agent_path, save=save_agent)
     base_trainer.run(num_iters_base, episodic=episodic_base)
 
     similarity_scores = []
     performance_list = []
     envID = 0
+
     for env in envs:
+
         env_coord=(envID // env.grid.shape[0], envID % env.grid.shape[1])
         print("------------------Env {}, coord {}------------------".format(envID, env_coord))
         envID+=1
@@ -325,53 +458,41 @@ if __name__ == '__main__':
         #import pdb; pdb.set_trace()
         performance_runs = []
 
-
-        
-        
-        if env_coord == (env.fixed_start // env.grid.shape[0], env.fixed_start % env.grid.shape[1]):
+        if env.fixed_start is not None and env.grid[unravel(env.fixed_start)] == 1:
+            performance_list.append(0)
+            continue
+        elif env_coord == (env.fixed_start // env.grid.shape[0], env.fixed_start % env.grid.shape[1]):
             performance_list.append(1.0)
             continue
-
+        
         for _ in range(num_trials):
 
-            trainer = QTrainer(env, decay=1e-3)
+            trainer = QTrainer(env, decay=1e-5)
 
-            base_trainer.transfer_to(trainer, direct_transfer=direct_transfer)
+            if do_transfer:
+                base_trainer.transfer_to(trainer, direct_transfer=direct_transfer)
 
-            trainer.run(num_iters=num_iters_transfer, episodic=episodic_transfer)
+            total_episode, total_step, performance = trainer.run(num_iters=num_iters_transfer, episodic=episodic_transfer, early_stopping=early_stopping)
 
-            trainer_test = trainer.eval()
-
-            performance = trainer_test[0]
-            performance_runs.append(performance)
+            if early_stopping:
+                if total_step == num_iters_transfer * 5000:
+                    total_step = 100000
+                performance_runs.append(total_step)
+            else:
+                trainer_test = trainer.eval()
+                performance = trainer_test[0]
+                performance_runs.append(performance)
+            
+            print("\n\nPerformance runs: ", performance_runs, "\n\n")
 
         performance_avg = mean(performance_runs)
         performance_list.append(performance_avg)
     
+    
 
     performance_list = np.array((performance_list))
-    performance_list_res = performance_list.reshape(base_env.grid.shape[0], base_env.grid.shape[1])
-
-    tasksim_list = np.array((similarity_scores))
-    tasksim_list_res = tasksim_list.reshape(base_env.grid.shape[0], base_env.grid.shape[1])
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(10,10))
-
-    sns.heatmap(performance_list_res, square=True, ax=ax)
-    plt.yticks(rotation=0,fontsize=16);
-    plt.xticks(fontsize=12);
-    plt.tight_layout()
-    plt.savefig('performance_' + outfile + '.png')
-
-    fig, ax = plt.subplots(figsize=(10,10))
-
-    sns.heatmap(tasksim_list_res, square=True, ax=ax)
-    plt.yticks(rotation=0,fontsize=16);
-    plt.xticks(fontsize=12);
-    plt.tight_layout()
-    plt.savefig('tasksim_' + outfile + '.png')
-
-    plt.show()
-
-    save_data(performance_list, tasksim_list, outfile)
-    import code; code.interact(local=vars())
+    similarity_scores = np.array((similarity_scores))
+    
+    print_graphs(performance_list, similarity_scores, outfile)
+    save_data(performance_list, similarity_scores, outfile)
+    #import code; code.interact(local=vars())

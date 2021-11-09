@@ -42,7 +42,7 @@ class MDPGraphEnv(gym.Env):
     # -> effectively an epsilon transition from an augmented start state node into the rest of the MDP Graph
     # TODO: should our metric encompass start state? A set of start states? TBD once we get some results
     # Default: random, any non-goal state
-    def reset(self, state=None):
+    def reset(self, state=None, center=True):
         if state is None:
             valid_states = np.where(self.grid.flatten() == 0)[0]
             assert len(valid_states) > 0, 'No possible start states!'
@@ -52,7 +52,7 @@ class MDPGraphEnv(gym.Env):
         assert 0 <= row < self.height and 0 <= col < self.width, 'Invalid start state: out of grid'
         assert self.grid[row, col] == 0, 'Invalid start state: non-zero grid entry'
         self.state = state
-        return self.gen_obs()
+        return self.gen_obs(center=center)
 
     # TODO: should observation be whole grid? or just a local snapshot, etc.
     # TODO: limited observation size
