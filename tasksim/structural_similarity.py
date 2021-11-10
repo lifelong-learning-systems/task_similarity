@@ -23,6 +23,7 @@ class InitStrategy(Enum):
     ZEROS = 1
     ONES = 2
     IDENTITY = 3
+    RAND = 4
 
 # TODO: normalize by dividing by a constant?
 # OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
@@ -56,7 +57,7 @@ def final_score_song(S):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    return 1 - ot.emd2(a, b, 1-S)
+    return 1 - ot.emd2(a, b, 1 - S)
 
 def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
@@ -148,6 +149,8 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
             u = int(chunk[i, j][0])
             v = int(chunk[i, j][1])
             if not len(out_S1[u]) or not len(out_S2[v]):
+                # obstacle-obstacle, goal-goal, obstacle-goal, goal-obstacle all have MAX similarity
+                # obstacle-normal, goal-normal all have MIN similarity
                 if not len(out_S1[u]) and not len(out_S2[v]):
                     #entry = c_s
                     entry = c_s
@@ -157,6 +160,10 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
                 haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
                 haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
                 haus = max(haus1, haus2)
+                # action_idx1 = out_S1[u]
+                # action_idx2 = out_S1[v]
+                # grid_idx = np.meshgrid(action_idx1, action_idx2)
+                # haus = ot.lp.emd2(action_idx1, action_idx2, one_minus_A[grid_idx])
                 entry = c_s * (1 - haus)
             entries[count] = entry
     return entries
@@ -246,6 +253,8 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
             for a_i, a_j in zip(actions_i, actions_j):
                 P_a_i = action_dists1[a_i]
                 P_a_j = action_dists2[a_j]
+                # TODO: If determinstic, this gets simplified?
+                # d_emd = d[s_i, s_j]
                 d_emd = emd_c(P_a_i.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                               P_a_j.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                               d.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), len(P_a_i), len(P_a_j), int(max_iters))
@@ -265,7 +274,7 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                                 stop_atol=1e-4, max_iters=1e5,
-                                init_strategy: InitStrategy = InitStrategy.ZEROS, self_similarity=False):
+                                init_strategy: InitStrategy = InitStrategy.RAND, self_similarity=False):
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
@@ -281,9 +290,14 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     elif init_strategy == InitStrategy.ZEROS:
         S = np.zeros((n_states1, n_states2))
         A = np.zeros((n_actions1, n_actions2))
-    else:
+    elif init_strategy == InitStrategy.ONES:
         S = np.ones((n_states1, n_states2))
         A = np.ones((n_actions1, n_actions2))
+    else:
+        rng = np.random.default_rng(seed=123)
+        S = rng.random((n_states1, n_states2))
+        A = rng.random((n_actions1, n_actions2))
+
 
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
