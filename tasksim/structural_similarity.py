@@ -274,7 +274,7 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                                 stop_atol=1e-4, max_iters=1e5,
-                                init_strategy: InitStrategy = InitStrategy.RAND, self_similarity=False):
+                                init_strategy: InitStrategy = InitStrategy.IDENTITY, self_similarity=False):
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
