@@ -10,7 +10,7 @@ LEFT = 3
 RIGHT = 4
 
 
-def create_mazes(dimension: Tuple[int], paths: List[List[int]]):
+def create_mazes(dimensions: Tuple[int], paths: List[List[int]]):
     envs = []
     for path in paths:
         env = build_maze(dimensions, path)
@@ -86,7 +86,6 @@ if __name__ == '__main__':
 
         sim_scores.append(scores)
 
-    
     cnt = len(envs)
     fig, axs = plt.subplots(cnt, cnt * 2, figsize=(30, 30))
 
