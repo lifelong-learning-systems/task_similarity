@@ -22,11 +22,13 @@ def run_simulation(trainer : QTrainer, repeat=2, delay=0.1):
 
 def sim_score(env1, env2, metric='new'):
     if metric == 'new':
-        S, A, num_iters, _ = env1.graph.compare(env2.graph)
+        res = env1.graph.compare(env2.graph)
+        S = res[0]
         return 1 - sim.final_score(S)            
     elif metric == 'song':
-        S, A, num_iters, _ = env1.graph.compare(env2.graph)
-        return 1 - sim.final_score(S)            
+        res = env1.graph.compare_song(env2.graph)
+        S = res[0]
+        return 1 - sim.final_score_song(S)            
     else:
         raise ArgumentError(f'Invalid metric option: {metric}')
 

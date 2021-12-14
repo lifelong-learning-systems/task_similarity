@@ -267,7 +267,7 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
         delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
         for s_i, s_j in zip(states1, states2):
             d[s_i, s_j] = d_prime[s_i, s_j]
-    return d
+    return d, True
 
 
 # TODO: Change InitStrategy to be ONES? Would need to re-run experiments...

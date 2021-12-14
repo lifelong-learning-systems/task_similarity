@@ -89,10 +89,13 @@ if __name__ == '__main__':
     envs.insert(0, empty_env)
     
     sim_scores : List[List[float]] = []
+    unique_scores = set()
     for i in range(len(envs)):
         scores = []
         for j in range(len(envs)):
-            scores.append(sim_score(envs[i], envs[j]))
+            score = sim_score(envs[i], envs[j], metric=metric)
+            unique_scores.add(score)
+            scores.append(score)
 
         sim_scores.append(scores)
 
@@ -121,7 +124,9 @@ if __name__ == '__main__':
 
     fig.tight_layout(pad=2.0)
 
-    plt.show()
+    plt.savefig(f'maze_out/maze_{metric}.png')
+    print(unique_scores)
+    #plt.show()
     
     
     
