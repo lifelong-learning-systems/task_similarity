@@ -482,8 +482,6 @@ if __name__ == '__main__':
                 trainer_test = trainer.eval()
                 performance = trainer_test[0]
                 performance_runs.append(performance)
-            
-            print("\n\nPerformance runs: ", performance_runs, "\n\n")
 
         performance_avg = mean(performance_runs)
         performance_list.append(performance_avg)

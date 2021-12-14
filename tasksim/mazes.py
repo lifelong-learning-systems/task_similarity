@@ -1,8 +1,7 @@
 from typing import List, Tuple
-from gym.core import Env
 from tasksim.qtrainer import *
 from tasksim.scenarios import sim_score
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
+
 
 UP = 1
 DOWN = 2
@@ -19,12 +18,13 @@ def create_mazes(dimensions: Tuple[int], paths: List[List[int]]):
 
 
 def build_maze(dimensions: Tuple[int], path: List[int]):
-    max_obs = dimensions[0] if dimensions[0] > dimensions[1] else dimensions[1]
+    max_obs = max(dimensions[0], dimensions[1])
     fixed_start = ravel(dimensions[0] - 1, 0, rows=dimensions[0], cols=dimensions[1])
     goal_loc = dimensions[1] - 1
     builder = EnvironmentBuilder(dimensions) \
         .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
         .set_fixed_start(fixed_start=fixed_start)\
+        .set_success_prob(success_prob=1.0)\
         .set_obs_size(max_obs)\
         .set_goals(goal_locations=[goal_loc])
 
@@ -65,7 +65,7 @@ def build_maze(dimensions: Tuple[int], path: List[int]):
 if __name__ == '__main__':
 
     dimensions = (9, 9)
-    empty_env = EnvironmentBuilder((9,9)).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
+    empty_env = EnvironmentBuilder(dimensions).set_strat(gen.ActionStrategy.NOOP_EFFECT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
 
     maze1 = [UP] * 9 + [RIGHT] * 9
     maze2 = [UP, UP, RIGHT, RIGHT] * 4
@@ -73,6 +73,7 @@ if __name__ == '__main__':
     maze4 = [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8
     maze5 = [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8
     maze6 = [RIGHT]*8 + [UP]*4 + [LEFT]*8 + [UP]*4 + [RIGHT]*8
+    
 
     mazes = [maze1, maze2, maze3, maze4, maze5, maze6]
     envs = create_mazes(dimensions, mazes)
