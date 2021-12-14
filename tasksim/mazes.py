@@ -2,6 +2,8 @@ from typing import List, Tuple
 from tasksim.qtrainer import *
 from tasksim.scenarios import sim_score
 
+import argparse
+
 
 UP = 1
 DOWN = 2
@@ -63,6 +65,13 @@ def build_maze(dimensions: Tuple[int], path: List[int]):
 
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    metric_choices = ['new', 'song']
+    parser.add_argument('--metric', default=metric_choices[0], choices=metric_choices, help='Which metric to use.')
+    args = parser.parse_args()
+
+    metric = args.metric
 
     dimensions = (9, 9)
     empty_env = EnvironmentBuilder(dimensions).set_strat(gen.ActionStrategy.NOOP_EFFECT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()

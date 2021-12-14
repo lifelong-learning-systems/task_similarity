@@ -1,3 +1,4 @@
+from argparse import ArgumentError
 from os import wait
 import matplotlib
 import tasksim
@@ -19,9 +20,15 @@ def run_simulation(trainer : QTrainer, repeat=2, delay=0.1):
             steps += 1
         
 
-def sim_score(env1, env2):
-    S, A, num_iters, _ = env1.graph.compare(env2.graph)
-    return 1 - sim.final_score(S)            
+def sim_score(env1, env2, metric='new'):
+    if metric == 'new':
+        S, A, num_iters, _ = env1.graph.compare(env2.graph)
+        return 1 - sim.final_score(S)            
+    elif metric == 'song':
+        S, A, num_iters, _ = env1.graph.compare(env2.graph)
+        return 1 - sim.final_score(S)            
+    else:
+        raise ArgumentError(f'Invalid metric option: {metric}')
 
 
 if __name__ == '__main__':
