@@ -54,6 +54,8 @@ def final_score(S, c_n=1.0):
     d_num_states = 1 - min(ns/nt, nt/ns)
     return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
 def final_score_song(S):
+    if isinstance(S, tuple):
+        S = S[0]
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
@@ -262,13 +264,16 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                 # TODO: what if this is greater than 1? Is that still okay?? Should we scale d_rwd by (1-c)?
                 #import pdb; pdb.set_trace()
                 tmp = (1 - c)*d_rwd + c*d_emd
-                assert tmp <= 1, 'd_rwd & d_emd combination resulted in value greater than 1'
+                if tmp <= 1 and not cross_structural_similarity_song.WARNED:
+                    print('WARNING: d_rwd & d_emd combination resulted in value greater than 1')
+                    cross_structural_similarity_song.WARNED = True
+                    
                 d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
         delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
         for s_i, s_j in zip(states1, states2):
             d[s_i, s_j] = d_prime[s_i, s_j]
     return d, True
-
+cross_structural_similarity_song.WARNED = False
 
 # TODO: Change InitStrategy to be ONES? Would need to re-run experiments...
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,

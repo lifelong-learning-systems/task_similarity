@@ -15,7 +15,7 @@ class MDPGraphEnv(gym.Env):
         super(MDPGraphEnv, self).__init__()
         self.fixed_start = fixed_start
         self.random_state = random_state if random_state is not None else np.random
-        supported_strats = [gen.ActionStrategy.NOOP_EFFECT, gen.ActionStrategy.WRAP_NOOP_EFFECT]
+        supported_strats = [gen.ActionStrategy.NOOP_EFFECT, gen.ActionStrategy.WRAP_NOOP_EFFECT, gen.ActionStrategy.NOOP_EFFECT_COMPRESS]
         # TODO: change from assertion to throw? Or just don't take graph instance; take grid, prob, etc. instead
         assert graph.strat in supported_strats, f'Unsupported ActionStrategy: {graph.strat}'
         assert obs_size >= 3 and obs_size % 2 == 1, f'Obs Size must be an odd number >= 3'

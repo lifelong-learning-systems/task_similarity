@@ -1,4 +1,5 @@
 from typing import List, Tuple
+from tasksim.gridworld_generator import ActionStrategy
 from tasksim.qtrainer import *
 from tasksim.scenarios import sim_score
 
@@ -9,6 +10,9 @@ UP = 1
 DOWN = 2
 LEFT = 3
 RIGHT = 4
+
+
+STRAT = ActionStrategy.NOOP_EFFECT_COMPRESS
 
 
 def create_mazes(dimensions: Tuple[int], paths: List[List[int]]):
@@ -24,7 +28,7 @@ def build_maze(dimensions: Tuple[int], path: List[int]):
     fixed_start = ravel(dimensions[0] - 1, 0, rows=dimensions[0], cols=dimensions[1])
     goal_loc = dimensions[1] - 1
     builder = EnvironmentBuilder(dimensions) \
-        .set_strat(gen.ActionStrategy.NOOP_EFFECT)\
+        .set_strat(STRAT)\
         .set_fixed_start(fixed_start=fixed_start)\
         .set_success_prob(success_prob=1.0)\
         .set_obs_size(max_obs)\
@@ -73,8 +77,14 @@ if __name__ == '__main__':
 
     metric = args.metric
 
+    # grid1 = gen.create_grid((2, 2))
+    # grid2 = gen.create_grid((2, 2))
+    # grid2[0, 1] = 1
+    # G1 = gen.MDPGraph.from_grid(grid1, success_prob=1, reward=1, strat=ActionStrategy.NOOP_EFFECT_COMPRESS)
+    # G2 = gen.MDPGraph.from_grid(grid2, success_prob=1, reward=1, strat=ActionStrategy.NOOP_EFFECT_COMPRESS)
+
     dimensions = (9, 9)
-    empty_env = EnvironmentBuilder(dimensions).set_strat(gen.ActionStrategy.NOOP_EFFECT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
+    empty_env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
 
     maze1 = [UP] * 9 + [RIGHT] * 9
     maze2 = [UP, UP, RIGHT, RIGHT] * 4
@@ -90,10 +100,13 @@ if __name__ == '__main__':
     
     sim_scores : List[List[float]] = []
     unique_scores = set()
+    precision = 6
+    precision_str = f'%.{precision}f'
     for i in range(len(envs)):
         scores = []
         for j in range(len(envs)):
-            score = sim_score(envs[i], envs[j], metric=metric)
+            score, S = sim_score(envs[i], envs[j], metric=metric, detailed=True)
+            score = float(precision_str % score)
             unique_scores.add(score)
             scores.append(score)
 

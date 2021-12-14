@@ -22,6 +22,8 @@ from enum import Enum
 
 from collections import namedtuple
 
+
+
 # Strategy for available actions; k = # of actions at each state
 # TODO: allow for both action & effect at once? NOOP_BOTH & WRAP_NOOP_BOTH maybe...
 # TODO: make composable traits, rather than all combinations listed out...
@@ -32,6 +34,11 @@ class ActionStrategy(Enum):
     WRAP_SUBSET = 4 # SUBSET, but wraparound at borders
     WRAP_NOOP_ACTION = 5 # NOOP_ACTION, ""
     WRAP_NOOP_EFFECT = 6 # NOOP_EFFECT, ""
+    SUBSET_COMPRESS = 7 # Subset, plus remove obstacles entirely from state graph
+    NOOP_EFFECT_COMPRESS = 8 # Subset, plus remove obstacles entirely from state graph
+
+WRAP_STRATS = [ActionStrategy.WRAP_SUBSET, ActionStrategy.WRAP_NOOP_ACTION, ActionStrategy.WRAP_NOOP_EFFECT]
+COMPRESS_STRATS = [ActionStrategy.SUBSET_COMPRESS, ActionStrategy.NOOP_EFFECT_COMPRESS]
 
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
@@ -70,7 +77,7 @@ class MDPGraph:
             moves[4] = state
 
         # start wtih no-op effect for all actions
-        if strat == ActionStrategy.NOOP_EFFECT or strat == ActionStrategy.WRAP_NOOP_EFFECT:
+        if strat == ActionStrategy.NOOP_EFFECT or strat == ActionStrategy.WRAP_NOOP_EFFECT or strat == ActionStrategy.NOOP_EFFECT_COMPRESS:
             moves[0] = moves[1] = moves[2] = moves[3] = state
         
         # obstacles and goal states have no out neighbors (besides no-op)
@@ -78,7 +85,7 @@ class MDPGraph:
             return moves
         
         # should wrap around or not
-        wrap = (strat in [ActionStrategy.WRAP_NOOP_EFFECT, ActionStrategy.WRAP_NOOP_ACTION, ActionStrategy.WRAP_SUBSET])
+        wrap = (strat in WRAP_STRATS)
 
         # left
         if col > 0 and grid[row][col - 1] != 1:
@@ -107,12 +114,22 @@ class MDPGraph:
     def grid_to_graph(cls, grid, success_prob=0.9, reward=1, strat=ActionStrategy.NOOP_ACTION):
         height, width = grid.shape
         goal_states = []
+        num_states = 0
+        states_to_grid = {}
+        grid_to_states = {}
         for i in range(height):
             for j in range(width):
+                grid_to_states[width*i + j] = np.nan
+                if grid[i][j] == 1 and strat in COMPRESS_STRATS:
+                    continue
                 if grid[i][j] == 2:
-                    goal_states.append(i*width + j)
+                    goal_states.append(num_states)
+                states_to_grid[num_states] = i*width + j
+                grid_to_states[width*i + j] = num_states
+                num_states += 1
         #assert len(goal_states) >= 1, 'At least one goal state required'
-        num_states = height * width
+        # COMPRESS out obstacles if needed
+        #num_states = height * width
         out_neighbors_s = dict(zip(range(num_states), 
                                     [np.empty(shape=(0,), dtype=int) for i in range(num_states)]))
         out_neighbors_a = dict()
@@ -121,9 +138,9 @@ class MDPGraph:
         a_node = 0
         available_actions = np.zeros((num_states, num_grid_actions))
         for s in range(num_states):
-            actions = cls.get_valid_adjacent(s, grid, strat)
+            actions = cls.get_valid_adjacent(states_to_grid[s], grid, strat)
             available_actions[s, :] = [1 if a is not None else 0 for a in actions]
-            filtered_actions = [a for a in actions if a is not None]
+            filtered_actions = [grid_to_states[a] for a in actions if a is not None]
             # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
             #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
             for action_id, action in enumerate(filtered_actions):
