@@ -15,6 +15,7 @@
 - Now install the `tasksim` package from source:
     - `git clone <TASK_SIMILARITY_REPO_URL>`
     - `cd task_similarity`
+    - `pip install -e ./tasksim/curriculum_tools`
     - `pip install -e .`
 - Additionally install `"ray[default]"`:
     - `pip install "ray[default]`

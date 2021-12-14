@@ -8,3 +8,4 @@ build/
 **/*.swp
 **/*.so
 **/*_api.h
+**/*.DS_Store
