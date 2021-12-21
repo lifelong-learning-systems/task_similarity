@@ -33,6 +33,19 @@ def sim_score(env1, env2, metric='new', detailed=False):
         raise ArgumentError(f'Invalid metric option: {metric}')
     return val, S if detailed else val
 
+def dist_score(env1, env2, metric='new', detailed=False):
+    if metric == 'new':
+        res = env1.graph.compare(env2.graph)
+        S = res[0]
+        val = sim.final_score(S)
+    elif metric == 'song':
+        res = env1.graph.compare_song(env2.graph)
+        S = res[0]
+        val = sim.final_score_song(S)
+    else:
+        raise ArgumentError(f'Invalid metric option: {metric}')
+    return val, S if detailed else val
+
 
 if __name__ == '__main__':
     

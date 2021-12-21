@@ -1,7 +1,7 @@
 from typing import List, Tuple
 from tasksim.gridworld_generator import ActionStrategy
 from tasksim.qtrainer import *
-from tasksim.scenarios import sim_score
+from tasksim.scenarios import sim_score, dist_score
 
 import argparse
 
@@ -105,7 +105,8 @@ if __name__ == '__main__':
     for i in range(len(envs)):
         scores = []
         for j in range(len(envs)):
-            score, S = sim_score(envs[i], envs[j], metric=metric, detailed=True)
+            print(i, j, '...')
+            score, S = dist_score(envs[i], envs[j], metric=metric, detailed=True)
             score = float(precision_str % score)
             unique_scores.add(score)
             scores.append(score)
@@ -113,7 +114,7 @@ if __name__ == '__main__':
         sim_scores.append(scores)
 
     cnt = len(envs)
-    fig, axs = plt.subplots(cnt, cnt * 2, figsize=(30, 30))
+    fig, axs = plt.subplots(cnt, cnt * 2, figsize=(25, 13))
 
     for i in range(len(axs)):
         num = 0
@@ -135,7 +136,7 @@ if __name__ == '__main__':
             num += 1
             
 
-    fig.tight_layout(pad=2.0)
+    fig.tight_layout(pad=0.2)
 
     plt.savefig(f'maze_out/maze_{metric}.png')
     print(unique_scores)

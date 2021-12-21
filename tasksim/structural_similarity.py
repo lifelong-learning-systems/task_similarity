@@ -59,7 +59,7 @@ def final_score_song(S):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    return 1 - ot.emd2(a, b, 1 - S)
+    return ot.emd2(a, b, S)
 
 def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
@@ -351,26 +351,44 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     # TODO: handle negative rewards differently...should be able to handle [-1, 1] range
     #reward_matrix1, reward_matrix2 = norm(reward_matrix1, reward_matrix2, 'minmax')
 
+    # def compute_exp(P, R):
+    #     n = P.shape[0]
+    #     # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
+    #     ret_pos = np.zeros((n,))
+    #     ret_neg = np.zeros((n,))
+    #     for i in range(n):
+    #         probs, rewards = P[i], R[i]
+    #         pos, neg = rewards >= 0, rewards < 0
+    #         ret_pos[i] = np.dot(probs[pos], rewards[pos])
+    #         ret_neg[i] = np.dot(probs[neg], rewards[neg])
+    #     return ret_pos, ret_neg
+    # expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
+    # expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
+    # def compute_diff(pos1, pos2, neg1, neg2):
+    #     diff = np.zeros((len(pos1), len(pos2)))
+    #     for i in range(len(pos1)):
+    #         for j in range(len(pos2)):
+    #             diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
+    #     return diff
+    # cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
     def compute_exp(P, R):
         n = P.shape[0]
         # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
-        ret_pos = np.zeros((n,))
-        ret_neg = np.zeros((n,))
+        ret = np.zeros((n,))
         for i in range(n):
             probs, rewards = P[i], R[i]
-            pos, neg = rewards >= 0, rewards < 0
-            ret_pos[i] = np.dot(probs[pos], rewards[pos])
-            ret_neg[i] = np.dot(probs[neg], rewards[neg])
-        return ret_pos, ret_neg
-    expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
-    expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
-    def compute_diff(pos1, pos2, neg1, neg2):
+            ret[i] = np.dot(probs, rewards)
+        return ret
+    expected_rewards1 = compute_exp(action_dists1, reward_matrix1)
+    expected_rewards2 = compute_exp(action_dists2, reward_matrix2)
+    def compute_diff(pos1, pos2):
         diff = np.zeros((len(pos1), len(pos2)))
         for i in range(len(pos1)):
             for j in range(len(pos2)):
-                diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
+                diff[i][j] = abs(pos1[i] - pos2[j])
         return diff
-    cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
+    cached_reward_differences = compute_diff(expected_rewards1, expected_rewards2)
+
     reward_diffs_id = ray.put(cached_reward_differences)
     actions1_id = ray.put(action_dists1)
     actions2_id = ray.put(action_dists2)
