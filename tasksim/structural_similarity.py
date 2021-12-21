@@ -212,67 +212,98 @@ def norm(mat1, mat2, method):
 
 
 def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1, out_neighbors_S2,
-                                     c=DEFAULT_CA, stop_tol=1e-4, max_iters=1e5):
+                                    available_actions1, available_actions2,
+                                     c=DEFAULT_CA, stop_tol=1e-2, max_iters=1e5):
     _, n_states1 = action_dists1.shape
     _, n_states2 = action_dists2.shape
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
+    #TODO tmp assignment
     d = np.zeros((n_states1, n_states2))
     d_prime = np.zeros((n_states1, n_states2))
     delta = np.inf
     # Paper assumes s' doesn't matter for reward; since our MDPs are stochastic, it does matter;
     # For fair comparison, using same reward function as other metric
+    # def compute_exp(P, R):
+    #     n = P.shape[0]
+    #     # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
+    #     ret_pos = np.zeros((n,))
+    #     ret_neg = np.zeros((n,))
+    #     for i in range(n):
+    #         probs, rewards = P[i], R[i]
+    #         pos, neg = rewards >= 0, rewards < 0
+    #         ret_pos[i] = np.dot(probs[pos], rewards[pos])
+    #         ret_neg[i] = np.dot(probs[neg], rewards[neg])
+    #     return ret_pos, ret_neg
     def compute_exp(P, R):
         n = P.shape[0]
-        # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
-        ret_pos = np.zeros((n,))
-        ret_neg = np.zeros((n,))
+        ret = np.zeros((n,))
         for i in range(n):
             probs, rewards = P[i], R[i]
-            pos, neg = rewards >= 0, rewards < 0
-            ret_pos[i] = np.dot(probs[pos], rewards[pos])
-            ret_neg[i] = np.dot(probs[neg], rewards[neg])
-        return ret_pos, ret_neg
-    expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
-    expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
-    def compute_diff(pos1, pos2, neg1, neg2):
-        diff = np.zeros((len(pos1), len(pos2)))
-        for i in range(len(pos1)):
-            for j in range(len(pos2)):
-                diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
-        return diff
-    cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
+            ret[i] = np.dot(probs, rewards)
+        return ret
+    # expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
+    # expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
+    expected_rewards1 = compute_exp(action_dists1, reward_matrix1)
+    expected_rewards2 = compute_exp(action_dists2, reward_matrix2)
+    # def compute_diff(pos1, pos2):
+    #     diff = np.zeros((len(pos1), len(pos2)))
+    #     for i in range(len(pos1)):
+    #         for j in range(len(pos2)):
+    #             diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
+    #     return diff
+    # cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
 
     # TODO: add performance optimizations as needed
+    num_iters = 0
     while not (delta < stop_tol):
-        for s_i, s_j in zip(states1, states2):
-            actions_i = out_neighbors_S1[s_i]
-            actions_j = out_neighbors_S2[s_j]
-            # Limited to paper specifics
-            assert len(actions_i) == len(actions_j), 'For Song metric, actions must have 1:1 correspondence'
-            # Assumes 1:1 correspondence in effect
-            for a_i, a_j in zip(actions_i, actions_j):
-                P_a_i = action_dists1[a_i]
-                P_a_j = action_dists2[a_j]
-                # TODO: If determinstic, this gets simplified?
-                # d_emd = d[s_i, s_j]
-                d_emd = emd_c(P_a_i.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                              P_a_j.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                              d.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), len(P_a_i), len(P_a_j), int(max_iters))
-                d_rwd = cached_reward_differences[a_i, a_j]
-                # TODO: what if this is greater than 1? Is that still okay?? Should we scale d_rwd by (1-c)?
-                #import pdb; pdb.set_trace()
-                tmp = (1 - c)*d_rwd + c*d_emd
-                if tmp <= 1 and not cross_structural_similarity_song.WARNED:
-                    print('WARNING: d_rwd & d_emd combination resulted in value greater than 1')
-                    cross_structural_similarity_song.WARNED = True
-                    
-                d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
+        num_iters += 1
+        for s_i in states1:
+            for s_j in states2:
+                actions_i = out_neighbors_S1[s_i]
+                actions_j = out_neighbors_S2[s_j]
+                avail_i = available_actions1[s_i]
+                avail_j = available_actions2[s_j]
+                # Limited to paper specifics
+                #assert len(actions_i) == len(actions_j), 'For Song metric, actions must have 1:1 correspondence'
+                # Assumes 1:1 correspondence in effect
+                #for a_i, a_j in zip(actions_i, actions_j):
+                act1_idx = 0
+                act2_idx = 0
+                for a_i, a_j in zip(avail_i, avail_j):
+                    if a_i == 0 and a_j == 0:
+                        continue
+                    if a_i != 1 or a_j != 1:
+                        continue
+                    a_i = actions_i[act1_idx]
+                    act1_idx += 1
+                    a_j = actions_j[act2_idx]
+                    act2_idx += 1
+
+                    P_a_i = action_dists1[a_i]
+                    P_a_j = action_dists2[a_j]
+                    P_i_ptr = P_a_i.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+                    P_j_ptr = P_a_j.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+                    d_ptr = d.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+                    d_emd = emd_c(P_i_ptr, P_j_ptr, d_ptr, len(P_a_i), len(P_a_j), int(max_iters))
+                    #d_rwd = cached_reward_differences[a_i, a_j]
+                    d_rwd = abs(expected_rewards1[a_i] - expected_rewards2[a_j])
+                    # TODO: what if this is greater than 1? Is that still okay?? Should we scale d_rwd by (1-c)?
+                    #import pdb; pdb.set_trace()
+                    #tmp = (1 - c)*d_rwd + c*d_emd
+                    tmp = d_rwd + c*d_emd
+                    if tmp > 1 and not cross_structural_similarity_song.WARNED:
+                        print('WARNING: d_rwd & d_emd combination resulted in value greater than 1')
+                        cross_structural_similarity_song.WARNED = True
+                        
+                    d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
+                #val = d_prime[s_i, s_j]
+                #print(val)
         delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
-        for s_i, s_j in zip(states1, states2):
-            d[s_i, s_j] = d_prime[s_i, s_j]
-    return d, True
+        from copy import deepcopy
+        d = deepcopy(d_prime)
+    return d, num_iters
 cross_structural_similarity_song.WARNED = False
 
 # TODO: Change InitStrategy to be ONES? Would need to re-run experiments...

@@ -139,8 +139,8 @@ class MDPGraph:
         available_actions = np.zeros((num_states, num_grid_actions))
         for s in range(num_states):
             actions = cls.get_valid_adjacent(states_to_grid[s], grid, strat)
-            available_actions[s, :] = [1 if a is not None else 0 for a in actions]
             filtered_actions = [grid_to_states[a] for a in actions if a is not None]
+            available_actions[s, :] = [1 if a is not None else 0 for a in actions]
             # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
             #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
             for action_id, action in enumerate(filtered_actions):
@@ -272,7 +272,8 @@ class MDPGraph:
         return sim.cross_structural_similarity(P1, P2, R1, R2, out_s1, out_s2, c_a=c_a, c_s=c_s)
 
     def compare_song(self, other, c=DEFAULT_CA):
-        return sim.cross_structural_similarity_song(self.P, other.P, self.R, other.R, self.out_s, other.out_s, c=c)
+        return sim.cross_structural_similarity_song(self.P, other.P, self.R, other.R, self.out_s, other.out_s, 
+                                                    self.available_actions, other.available_actions, c=c)
     # using convention from POT
     def compare2(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         return sim.final_score(self.compare(other, c_a, c_s))
