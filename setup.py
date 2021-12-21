@@ -44,7 +44,10 @@ setup(
         'pyinstrument',
         'numba',
         'ray',
-        'ray[default]'
+        'ray[default]',
+        'gym',
+        'torch',
+        'ray[rllib]'
     ],
     zip_safe=False,
 )
