@@ -73,30 +73,43 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     metric_choices = ['new', 'song']
     parser.add_argument('--metric', default=metric_choices[0], choices=metric_choices, help='Which metric to use.')
+    parser.add_argument('--rand', action='store_true', help='Use randomly generated mazes, as per seed')
+    parser.add_argument('--seed', help='Specifies seed for the RNG', default=81923673)
+    parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
+    parser.add_argument('--num', help='Number of mazes to randomly generate', default=6)
     args = parser.parse_args()
 
+    use_rand = int(args.rand)
+    seed = int(args.seed)
+    dim = int(args.dim)
+    num_mazes = int(args.num)
     metric = args.metric
 
-    # grid1 = gen.create_grid((2, 2))
-    # grid2 = gen.create_grid((2, 2))
-    # grid2[0, 1] = 1
-    # G1 = gen.MDPGraph.from_grid(grid1, success_prob=1, reward=1, strat=ActionStrategy.NOOP_EFFECT_COMPRESS)
-    # G2 = gen.MDPGraph.from_grid(grid2, success_prob=1, reward=1, strat=ActionStrategy.NOOP_EFFECT_COMPRESS)
+    if not use_rand:
+        dimensions = (9, 9)
+        empty_env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
 
-    dimensions = (9, 9)
-    empty_env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
+        maze1 = [UP] * 9 + [RIGHT] * 9
+        maze2 = [UP, UP, RIGHT, RIGHT] * 4
+        maze3 = [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*4 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [LEFT]*2 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [RIGHT]*2 + [UP]*9
+        maze4 = [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8
+        maze5 = [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8
+        maze6 = [RIGHT]*8 + [UP]*4 + [LEFT]*8 + [UP]*4 + [RIGHT]*8
+        
 
-    maze1 = [UP] * 9 + [RIGHT] * 9
-    maze2 = [UP, UP, RIGHT, RIGHT] * 4
-    maze3 = [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*4 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [LEFT]*2 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [RIGHT]*2 + [UP]*9
-    maze4 = [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8
-    maze5 = [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8
-    maze6 = [RIGHT]*8 + [UP]*4 + [LEFT]*8 + [UP]*4 + [RIGHT]*8
-    
-
-    mazes = [maze1, maze2, maze3, maze4, maze5, maze6]
-    envs = create_mazes(dimensions, mazes)
-    envs.insert(0, empty_env)
+        mazes = [maze1, maze2, maze3, maze4, maze5, maze6]
+        envs = create_mazes(dimensions, mazes)
+        envs.insert(0, empty_env)
+    else:
+        dimensions = (dim, dim)
+        prng = np.random.RandomState(seed)
+        grids = []
+        for _ in range(num_mazes):
+            obs_prob = prng.rand()
+            print(obs_prob)
+            # now randomly create grid?
+        print('Rand not supported yet!')
+        exit(0)
     
     sim_scores : List[List[float]] = []
     unique_scores = set()

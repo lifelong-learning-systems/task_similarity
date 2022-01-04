@@ -25,6 +25,23 @@ class InitStrategy(Enum):
     IDENTITY = 3
     RAND = 4
 
+def directed_hausdorff_numpy(delta_a, N_u, N_v):
+    """
+    Directed Hausdorff distance using a distance matrix and the out-neighbors of state nodes u and v. Note the the full
+        Hausdorff distance is given by:
+
+        max(directed_hausdorff_numpy(delta_a, N_u, N_v), directed_hausdorff_numpy(delta_a, N_v, N_u))
+
+    :param delta_a: (np.array) State distance matrix.
+    :param N_u: (list or np.array) Out neighbors (action nodes) of state node u.
+    :param N_v: (list or np.array) Out neighbors (action nodes) of state node v.
+    :return: (float) Directed Hausdorff distance.
+    """
+    #return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
+    # ensure they're already np arrays, then do min along axis 0, instead of swapping and min along axis 1
+    # since it's very small (at most 5 action neighbors), use python min/max instead of numpy
+    return max([min(x) for x in delta_a[N_u].T[N_v].T])
+
 # TODO: normalize by dividing by a constant?
 # OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
 # I like having c_a as 0.5, since it evenly balances d_rwd and d_emd, then c_s around 0.99-0.999ish
@@ -53,6 +70,11 @@ def final_score(S, c_n=1.0):
     #d_num_states = (1 - 1/(abs(ns - nt) + 1))
     d_num_states = 1 - min(ns/nt, nt/ns)
     return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
+    # import pdb; pdb.set_trace()
+    # haus1 = directed_hausdorff_numpy(1 - S, list(range(ns)), list(range(nt)))
+    # haus2 = directed_hausdorff_numpy((1 - S).T, list(range(nt)), list(range(ns)))
+    # haus = max(haus1, haus2)
+    # return haus
 def final_score_song(S):
     if isinstance(S, tuple):
         S = S[0]
@@ -70,23 +92,6 @@ def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
 def truncate_score(score, num_decimal=3):
     mul = 10**num_decimal
     return np.trunc(score * mul)/(mul)
-
-def directed_hausdorff_numpy(delta_a, N_u, N_v):
-    """
-    Directed Hausdorff distance using a distance matrix and the out-neighbors of state nodes u and v. Note the the full
-        Hausdorff distance is given by:
-
-        max(directed_hausdorff_numpy(delta_a, N_u, N_v), directed_hausdorff_numpy(delta_a, N_v, N_u))
-
-    :param delta_a: (np.array) State distance matrix.
-    :param N_u: (list or np.array) Out neighbors (action nodes) of state node u.
-    :param N_v: (list or np.array) Out neighbors (action nodes) of state node v.
-    :return: (float) Directed Hausdorff distance.
-    """
-    #return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
-    # ensure they're already np arrays, then do min along axis 0, instead of swapping and min along axis 1
-    # since it's very small (at most 5 action neighbors), use python min/max instead of numpy
-    return max([min(x) for x in delta_a[N_u].T[N_v].T])
 
 
 
@@ -310,7 +315,7 @@ cross_structural_similarity_song.WARNED = False
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                                 stop_atol=1e-4, max_iters=1e5,
-                                init_strategy: InitStrategy = InitStrategy.ZEROS, self_similarity=False):
+                                init_strategy: InitStrategy = InitStrategy.ONES, self_similarity=False):
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
