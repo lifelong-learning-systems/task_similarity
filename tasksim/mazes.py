@@ -76,13 +76,17 @@ if __name__ == '__main__':
     parser.add_argument('--rand', action='store_true', help='Use randomly generated mazes, as per seed')
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=81923673)
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
-    parser.add_argument('--num', help='Number of mazes to randomly generate', default=6)
+    parser.add_argument('--num', help='Number of mazes to randomly generate', default=7)
+    parser.add_argument('--prob', help='Transition probability', default=1)
     args = parser.parse_args()
 
     use_rand = int(args.rand)
     seed = int(args.seed)
     dim = int(args.dim)
     num_mazes = int(args.num)
+    prob = float(args.prob)
+    prob = max(prob, 0)
+    prob = min(prob, 1)
     metric = args.metric
 
     if not use_rand:
@@ -104,12 +108,27 @@ if __name__ == '__main__':
         dimensions = (dim, dim)
         prng = np.random.RandomState(seed)
         grids = []
+        obs_max = 0.4
+        envs = []
+        # upper right
+        goal = ravel(0, 8, *dimensions)
+        # bottom left
+        start = ravel(8, 0, *dimensions)
         for _ in range(num_mazes):
-            obs_prob = prng.rand()
-            print(obs_prob)
-            # now randomly create grid?
-        print('Rand not supported yet!')
-        exit(0)
+            obs_prob = prng.rand()*obs_max
+            num_states = np.prod(dimensions)
+            states = np.arange(num_states)
+            states = states[(states != goal) & (states != start) & (states != start + 1) & (states != start - dim) \
+                            & (states != goal - 1) & (states != goal + dim)]
+            obstacles = []
+            for s in states:
+                if prng.rand() < obs_prob:
+                    obstacles.append(s)
+            env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([goal]) \
+                                                      .set_fixed_start(start) \
+                                                      .set_success_prob(prob).set_obs_size(9) \
+                                                      .set_obstacles(obstacles).build()
+            envs.append(env)
     
     sim_scores : List[List[float]] = []
     unique_scores = set()
@@ -151,7 +170,9 @@ if __name__ == '__main__':
 
     fig.tight_layout(pad=0.2)
 
-    plt.savefig(f'maze_out/maze_{metric}.png')
+    rand_str = '_rand' if use_rand else ''
+    prob_str = f'_{prob}' if prob != 1 else ''
+    plt.savefig(f'maze_out/maze_{metric}{rand_str}{prob_str}.png')
     print(unique_scores)
     #plt.show()
     

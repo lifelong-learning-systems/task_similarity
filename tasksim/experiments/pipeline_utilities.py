@@ -90,14 +90,16 @@ def heatmap(matrix, title=None, xticks=None, yticks=None, new_figure=True, flip_
     if upper:
         if standard_range:
             ax = sns.heatmap(1 - keep, mask=mask, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+            #ax = sns.heatmap(keep, mask=mask, linewidth=0.5, cmap="rainbow")
         else:
-            ax = sns.heatmap(1 - keep, mask=mask, linewidth=0.5, cmap="rainbow")
+            ax = sns.heatmap(keep, mask=mask, linewidth=0.5, cmap="rainbow", vmin=0)
     else:
         keep = np.flipud(matrix) if flip_orientation else matrix
         if standard_range:
             ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow", vmin=0, vmax=1)
+            #ax = sns.heatmap(keep, linewidth=0.5, cmap="rainbow")
         else:
-            ax = sns.heatmap(1 - keep, linewidth=0.5, cmap="rainbow")
+            ax = sns.heatmap(keep, linewidth=0.5, cmap="rainbow", vmin=0)
     if title is not None:
         ax.set_title(title)
     if xticks is not None:

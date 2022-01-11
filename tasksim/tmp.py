@@ -51,6 +51,7 @@ def display(g):
     print(g.grid)
     S, A, num_iters, done = base_g.compare(g)
     print(sim.final_score(S))
+    print(base_g.compare2_song(g))
     print(num_iters)
 
 print('Basic')
