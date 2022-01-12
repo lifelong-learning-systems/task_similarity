@@ -91,6 +91,8 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     assert len(sim_mats), 'Sources must be non empty'
     new_states = target_env.graph.P.shape[1]
     # TODO: don't assume 4 actions, but whatever
+    n_actions = 4
+    action_dist = [1.0/n_actions for _ in range(n_actions)]
     new_Q = np.zeros((new_states, 4))
 
     N = len(sim_mats)
@@ -105,16 +107,22 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                 w_sim = sim_mat[source_state, target_state]
                 w_col = column_sums[target_state]
                 w = w_base*w_sim/w_col
+
+                total_weights = w*np.zeros(len(source_Q[source_state, :]))
+                
                 # TODO: figure out action-space correspondence first!
+                col_order = np.arange(n_actions)
                 if action_sim is not None:
                     source_actions = source_env.graph.out_s[source_state]
                     target_actions = target_env.graph.out_s[target_state]
                     action_subset = action_sim[source_actions].T[target_actions].T
-                    #action_subset_transpose = action_sim_transpose[target_actions].T[source_actions].T
-                    if w_sim != 0:
-                        #print('yay')
-                        pass
-                new_Q[target_state, :] += w*source_Q[source_state, :]
+                    action_mat = ot.emd(action_dist, action_dist, action_subset.copy())
+                    assert action_mat[action_mat != 0].size == n_actions, 'Unexpected number of entries'
+                    col_order = np.argmax(action_mat, axis=1)
+                
+                for target_action in range(n_actions):
+                    new_Q[target_state, target_action] += w*source_Q[source_state, col_order[target_action]]
+                #new_Q[target_state, :] += w*source_Q[source_state, :]
     return new_Q
 
 
@@ -201,7 +209,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 5
+    n_trials = 50
     first_50_total = None
     # End trial early if reaching this many completed episodes...
     max_eps = 101

@@ -1,7 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-RESULTS_DIR='results_transfer'
+RESULTS_DIR='results_tmp'
 
 file_names = ['new_res.txt', 'song_res.txt']
 
