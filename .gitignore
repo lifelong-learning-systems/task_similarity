@@ -11,4 +11,5 @@ build/
 **/*.DS_Store
 
 tasksim/results_transfer
-tasksim/cache_results
+tasksim/cached_results
+

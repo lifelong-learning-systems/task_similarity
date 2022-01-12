@@ -15,6 +15,7 @@ from numba.extending import get_cython_function_address
 import ctypes
 from ctypes import CFUNCTYPE, POINTER, c_double, c_int
 import numpy.ctypeslib as npct
+import sys
 
 DEFAULT_CA = 0.5
 DEFAULT_CS = 0.995
@@ -74,15 +75,12 @@ def final_score(S, c_n=1.0, norm=True):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    #d_num_states = (1 - 1/(abs(ns - nt) + 1))
-    d_num_states = 1 - min(ns/nt, nt/ns)
-    score =  c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
-    return score if not norm else normalize_score(score)
-    # import pdb; pdb.set_trace()
-    # haus1 = directed_hausdorff_numpy(1 - S, list(range(ns)), list(range(nt)))
-    # haus2 = directed_hausdorff_numpy((1 - S).T, list(range(nt)), list(range(ns)))
-    # haus = max(haus1, haus2)
-    # return haus
+    #d_num_states = 1 - min(ns/nt, nt/ns)
+    #score =  c_n * ot.emd2(a, b, S) + (1 - c_n) * d_num_states
+    score = ot.emd2(a, b, S)
+    #return score if not norm else normalize_score(score)
+    return score
+
 def final_score_song(S):
     if isinstance(S, tuple):
         S = S[0]
@@ -97,7 +95,7 @@ def sim_matrix(S):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    return ot.emd(a, b, 1 - S)
+    return ot.emd(a, b, S)
 
 
 def sim_matrix_song(S):
@@ -141,7 +139,7 @@ def compute_a_py(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_
             entries[count] = entry
     return entries
 
-def compute_a_py_full(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters):
+def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_maxiters):
     n_chunk1 = chunk.shape[0]
     n_chunk2 = chunk.shape[1]
     num_actions1, num_states1 = actions1.shape
@@ -150,7 +148,7 @@ def compute_a_py_full(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a,
     def to_ptr(x):
         return x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
     emd_c_chunk(n_chunk1, n_chunk2, num_actions1, num_actions2, num_states1, num_states2,
-                          to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(one_minus_S),
+                          to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(D_s),
                           to_ptr(entries),
                           np.float64(c_a), int(emd_maxiters))
     return entries
@@ -163,6 +161,7 @@ def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_max
 
 @ray.remote
 def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
+    # one_minus_A is the action-action distances
     chunk_n1, chunk_n2, _ = chunk.shape
     count = -1
     entries = np.ones(chunk_n1 * chunk_n2) * -1
@@ -174,23 +173,23 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
                 continue
             u = int(chunk[i, j][0])
             v = int(chunk[i, j][1])
+            # CHANGING THE RETURN TO BE A DISTANCE
             if not len(out_S1[u]) or not len(out_S2[v]):
                 # obstacle-obstacle, goal-goal, obstacle-goal, goal-obstacle all have MAX similarity
                 # obstacle-normal, goal-normal all have MIN similarity
                 if not len(out_S1[u]) and not len(out_S2[v]):
                     #entry = c_s
-                    entry = c_s
-                else:
                     entry = 0
+                else:
+                    #entry = 0
+                    # Passing in doubles
+                    entry = c_s*np.finfo(np.float64).max
             else:
                 haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
                 haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
                 haus = max(haus1, haus2)
-                # action_idx1 = out_S1[u]
-                # action_idx2 = out_S1[v]
-                # grid_idx = np.meshgrid(action_idx1, action_idx2)
-                # haus = ot.lp.emd2(action_idx1, action_idx2, one_minus_A[grid_idx])
-                entry = c_s * (1 - haus)
+                #entry = c_s * (1 - haus)
+                entry = c_s * haus
             entries[count] = entry
     return entries
 
@@ -315,7 +314,6 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                     #d_rwd = cached_reward_differences[a_i, a_j]
                     d_rwd = abs(expected_rewards1[a_i] - expected_rewards2[a_j])
                     # TODO: what if this is greater than 1? Is that still okay?? Should we scale d_rwd by (1-c)?
-                    #import pdb; pdb.set_trace()
                     #tmp = (1 - c)*d_rwd + c*d_emd
                     tmp = d_rwd + c*d_emd
                     if tmp > 1 and not cross_structural_similarity_song.WARNED:
@@ -366,9 +364,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
     one_minus_c_a = 1 - c_a  # optimization
     emd_maxiters = 1e5
-    #  1:1 2:1
-    #  1:2 2:2
-    #   eye(2n)
 
     last_S = S.copy()
     last_A = A.copy()
@@ -380,8 +375,8 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         min_r = reward_matrix.min()
         return (reward_matrix - min_r)/(max_r - min_r)
 
-    reward_matrix1 = norm_rewards(reward_matrix1)
-    reward_matrix2 = norm_rewards(reward_matrix2)
+    #reward_matrix1 = norm_rewards(reward_matrix1)
+    #reward_matrix2 = norm_rewards(reward_matrix2)
 
     def compute_exp(P, R):
         n = P.shape[0]
@@ -425,15 +420,21 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
     done = False
     iter = 0
+
+    # FROM THIS POINT ON, S is to be considered distance matrices, rather than similarity
     while not done and iter < max_iters:
         # TODO: some amount of parallelization
-        one_minus_S = 1 - S
-        one_minus_S_id = ray.put(one_minus_S)
+        # one_minus_S = 1 - S
+        # one_minus_S_id = ray.put(one_minus_S)
+        D_s = S
+        D_s_id = ray.put(D_s)
 
-        bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, one_minus_S_id,
+        bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, D_s_id,
                                                         c_a, emd_maxiters,
                                                         handle=compute_a_py_full)
                                                         # handle=pc.compute_chunk)
+        
+
         remoted_a = [bind_compute_a(chunk) for chunk in action_chunks]
         new_A = np.concatenate([ray.get(x) for x in remoted_a]).reshape((n_actions1, n_actions2))
         A[new_A >= 0] = new_A[new_A >= 0]
@@ -441,13 +442,17 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         if self_similarity:
             i_lower = np.tril_indices(len(A), -1)
             A[i_lower] = A.T[i_lower]
+        
 
-        one_minus_A = 1 - A
-        one_minus_A_transpose = one_minus_A.T
-        one_minus_A_id = ray.put(one_minus_A)
-        one_minus_A_transpose_id = ray.put(one_minus_A.T)
+        # AT THIS POINT, A is a distance matrix
+        # each entry in A computed by (1 - c_a)*d_rwd - (1 - c_a)*d_emd
+
+        D_a = A
+        D_a_transpose = A.T
+        D_a_id = ray.put(D_a)
+        D_a_transpose_id = ray.put(D_a_transpose)
         bind_compute_s = lambda chunk: compute_s.remote(chunk, out_S1_id, out_S2_id,
-                                                        one_minus_A_id, one_minus_A_transpose_id,
+                                                        D_a_id, D_a_transpose_id,
                                                         c_s)
         remoted_s = [bind_compute_s(chunk) for chunk in state_chunks]
         new_S = np.concatenate([ray.get(x) for x in remoted_s]).reshape((n_states1, n_states2))
@@ -466,6 +471,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
         iter += 1
 
+    # Return distances
     return S, A, iter - 1, done  # return done to report that it converged (or didn't)
 
 

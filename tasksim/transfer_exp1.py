@@ -197,6 +197,8 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, restore=False):
         with open(data_path, 'rb') as f:
             data = pickle.load(f)
     
+    
+    
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
     n_trials = 50
