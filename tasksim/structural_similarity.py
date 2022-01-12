@@ -26,7 +26,7 @@ DEFAULT_CS = 0.995
 STOP_ATOL = 1e-4
 STOP_RTOL = 1e-3
 
-DO_NORMALIZE_SCORE = True
+DO_NORMALIZE_SCORE = False
 
 class RewardStrategy(Enum):
     NOOP = 1
@@ -144,7 +144,7 @@ def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_max
                           to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(D_s),
                           to_ptr(entries),
                           np.float64(c_a), int(emd_maxiters))
-    return entries if COMPUTE_DISTANCE else 1 - entries
+    return entries
 
 
 # Returns the action-action distances, or similarities, taking in the state-state distances
@@ -155,7 +155,7 @@ def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_max
 
 # Returns the state-to-state distances or similarities, taking in the action-action distances
 @ray.remote
-def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
+def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s, compute_distance):
     # one_minus_A is the action-action distances
     chunk_n1, chunk_n2, _ = chunk.shape
     count = -1
@@ -173,15 +173,15 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
                 # obstacle-obstacle, goal-goal, obstacle-goal, goal-obstacle all have MAX similarity
                 # obstacle-normal, goal-normal all have MIN similarity
                 if not len(out_S1[u]) and not len(out_S2[v]):
-                    entry = 0 if COMPUTE_DISTANCE else c_s
+                    entry = 0 if compute_distance else c_s
                 else:
                     # Passing in doubles
-                    entry = c_s*np.finfo(np.float64).max if COMPUTE_DISTANCE else 0
+                    entry = c_s*np.finfo(np.float64).max if compute_distance else 0
             else:
                 haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
                 haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
                 haus = max(haus1, haus2)
-                entry = c_s * (haus if COMPUTE_DISTANCE else (1 - haus))
+                entry = c_s * (haus if compute_distance else (1 - haus))
             entries[count] = entry
     return entries
 
@@ -308,6 +308,8 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=STOP_RTOL,
                                 stop_atol=STOP_ATOL, max_iters=1e5,
                                 init_strategy: InitStrategy = InitStrategy.ONES, self_similarity=False):
+    global COMPUTE_DISTANCE
+    global REWARD_STRATEGY
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
@@ -421,6 +423,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
         remoted_a = [bind_compute_a(chunk) for chunk in action_chunks]
         new_A = np.concatenate([ray.get(x) for x in remoted_a]).reshape((n_actions1, n_actions2))
+        new_A = new_A if COMPUTE_DISTANCE else 1 - new_A
         A[new_A >= 0] = new_A[new_A >= 0]
         # Make symmetric if needed
         if self_similarity:
@@ -431,13 +434,14 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         # AT THIS POINT, A is a distance matrix
         # each entry in A computed by (1 - c_a)*d_rwd - (1 - c_a)*d_emd
 
+        # TODO: should these still be 1 - A
         D_a = A if COMPUTE_DISTANCE else 1 - A
         D_a_transpose = A.T if COMPUTE_DISTANCE else 1 - A.T
         D_a_id = ray.put(D_a)
         D_a_transpose_id = ray.put(D_a_transpose)
         bind_compute_s = lambda chunk: compute_s.remote(chunk, out_S1_id, out_S2_id,
                                                         D_a_id, D_a_transpose_id,
-                                                        c_s)
+                                                        c_s, COMPUTE_DISTANCE)
         remoted_s = [bind_compute_s(chunk) for chunk in state_chunks]
         new_S = np.concatenate([ray.get(x) for x in remoted_s]).reshape((n_states1, n_states2))
         S[new_S >= 0] = new_S[new_S >= 0]

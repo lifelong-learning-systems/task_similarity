@@ -140,6 +140,10 @@ if __name__ == '__main__':
             for j in range(len(envs)):
                 print(i, j, '...')
                 score, S = dist_score(envs[i], envs[j], metric=metric, detailed=True)
+                if i == 1 and j == 2:
+                    G1 = envs[i].graph
+                    G2 = envs[j].graph
+                    import pdb; pdb.set_trace()
                 score = float(precision_str % score)
                 unique_scores.add(score)
                 scores.append(score)

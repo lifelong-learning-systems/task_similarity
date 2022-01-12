@@ -15,12 +15,28 @@ from tasksim.qtrainer import *
 
 ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
-RESULTS_DIR = 'results_tmp'
+RESULTS_DIR = 'results_transfer'
+
+ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'new_dist_normalize']
+NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
+
+def init_algo(metric):
+    if metric == 'new':
+        sim.REWARD_STRATEGY = sim.RewardStrategy.NORMALIZE_INDEPENDENT
+        sim.COMPUTE_DISTANCE = False
+    elif metric == 'new_dist':
+        sim.REWARD_STRATEGY = sim.RewardStrategy.NOOP
+        sim.COMPUTE_DISTANCE = True
+    elif metric == 'new_dist_normalize':
+        sim.REWARD_STRATEGY = sim.RewardStrategy.NORMALIZE_INDEPENDENT
+        sim.COMPUTE_DISTANCE = True
+    elif metric == 'song':
+        # No special options 
+        pass
 
 # Hyper parameters for qtrainer
 GAMMA = 0.1
 TEST_ITER = int(1e5)
-
 
 
 # From https://stackoverflow.com/a/54628145
@@ -115,6 +131,7 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                     target_actions = target_env.graph.out_s[target_state]
                     action_subset = action_sim[source_actions].T[target_actions].T
                     action_mat = sim.sim_matrix(action_subset.copy())
+                    #import pdb; pdb.set_trace()
                     assert action_mat[action_mat != 0].size == n_actions, 'Unexpected number of entries'
                     col_order = np.argmax(action_mat, axis=1)
                 
@@ -125,6 +142,8 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
 
 
 def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=False):
+    init_algo(metric)
+
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
     target_env, source_envs = create_envs(num_mazes, dim, prob, prng, obs_max, reward)
@@ -182,7 +201,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
         print('Caching sim/dist matrices...')
         for idx, env in enumerate(source_envs):
             print(f'Comparing MDP {idx} / {len(source_envs)}...')
-            if metric == 'new':
+            if metric in NEW_ALGOS:
                 D, A, _, _ = env.graph.compare(target_env.graph)
                 score = sim.final_score(D)
                 sim_mat = sim.sim_matrix(D)
@@ -204,7 +223,6 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
             data = pickle.load(f)
     
     
-    
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
     n_trials = 10
@@ -219,7 +237,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
         for sim_mat, score, trainer in zip(data['sim_mats'], data['scores'], trainers):
             source_Q = trainer.Q
             label = f'{metric}_{idx}'
-            if metric == 'new':
+            if metric in NEW_ALGOS:
                 action_sim = data['action_sims'][idx]
             else:
                 action_sim = None
@@ -265,8 +283,8 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
 # Experiment sent on slack: dim 9, prob 1.0, num 8, obsmax 0.5 [annealing starts at 0.2 epsilon, decay 5.0/num_iters]
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    metric_choices = ['both', 'new', 'song']
-    parser.add_argument('--metric', default=metric_choices[0], choices=metric_choices, help='Which metric to use.')
+    parser.add_argument('--metric', default=ALGO_CHOICES[0], choices=ALGO_CHOICES, help='Which metric to use.')
+    parser.add_argument('--results', help='Result directory', default='results_transfer')
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=13)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=16)
@@ -288,13 +306,17 @@ if __name__ == '__main__':
     restore = args.restore
     obs_max = float(args.obsmax)
     reward = float(args.reward)
+    results = args.results
+    RESULTS_DIR = results
 
     ARG_DICT = vars(args)
 
     bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=restore)
     if metric == 'both':
-        bound('new')
-        bound('song')
+        for metric in ALGO_CHOICES:
+            if metric == 'both':
+                continue
+            bound(metric)
     else:
         bound(metric)
     
