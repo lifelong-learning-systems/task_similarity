@@ -20,6 +20,8 @@ RESULTS_DIR = 'results_transfer'
 ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'new_dist_normalize']
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
+TRANSFER_METHODS = ['weight', 'weight_action']
+
 def init_algo(metric):
     if metric == 'new':
         sim.REWARD_STRATEGY = sim.RewardStrategy.NORMALIZE_INDEPENDENT
@@ -131,7 +133,6 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                     target_actions = target_env.graph.out_s[target_state]
                     action_subset = action_sim[source_actions].T[target_actions].T
                     action_mat = sim.sim_matrix(action_subset.copy())
-                    #import pdb; pdb.set_trace()
                     assert action_mat[action_mat != 0].size == n_actions, 'Unexpected number of entries'
                     col_order = np.argmax(action_mat, axis=1)
                 
@@ -141,8 +142,12 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     return new_Q
 
 
-def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=False):
+def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, restore=False):
     init_algo(metric)
+    if transfer_method == 'weight':
+        use_action = False
+    else:
+        use_action = True
 
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
@@ -241,7 +246,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
                 action_sim = data['action_sims'][idx]
             else:
                 action_sim = None
-            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim])
+            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], use_action=use_action)
             print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
             new_trainer = test_env(target_env, new_Q, label, max_eps=max_eps, restore=restore)
             print(f'\tDistance score: {score}')
@@ -285,6 +290,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--metric', default=ALGO_CHOICES[0], choices=ALGO_CHOICES, help='Which metric to use.')
     parser.add_argument('--results', help='Result directory', default='results_transfer')
+    parser.add_argument('--transfer', help='Which transfer method to use', choices=TRANSFER_METHODS, default=TRANSFER_METHODS[0])
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=13)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=16)
@@ -307,11 +313,12 @@ if __name__ == '__main__':
     obs_max = float(args.obsmax)
     reward = float(args.reward)
     results = args.results
+    transfer_method = args.transfer
     RESULTS_DIR = results
 
     ARG_DICT = vars(args)
 
-    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=restore)
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, restore=restore)
     if metric == 'both':
         for metric in ALGO_CHOICES:
             if metric == 'both':
