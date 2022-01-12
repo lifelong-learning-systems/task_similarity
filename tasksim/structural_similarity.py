@@ -17,11 +17,24 @@ from ctypes import CFUNCTYPE, POINTER, c_double, c_int
 import numpy.ctypeslib as npct
 import sys
 
+
+# ----------------------- PARAMETERS ------------------
+
 DEFAULT_CA = 0.5
 DEFAULT_CS = 0.995
 
 STOP_ATOL = 1e-4
 STOP_RTOL = 1e-3
+
+DO_NORMALIZE_SCORE = True
+class RewardStrategy(Enum):
+    NOOP = 1
+    NORMALIZE_INDEPENDENT = 2
+    NORMALIZE_TOGETHER = 3
+REWARD_STRATEGY = RewardStrategy.NORMALIZE_INDEPENDENT
+
+
+# ----------------------- END PARAMS -------------------
 
 class InitStrategy(Enum):
     ZEROS = 1
@@ -78,11 +91,11 @@ def final_score(S, c_n=1.0, norm=True):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
-    #d_num_states = 1 - min(ns/nt, nt/ns)
-    #score =  c_n * ot.emd2(a, b, S) + (1 - c_n) * d_num_states
     score = ot.emd2(a, b, S)
-    #return score if not norm else normalize_score(score)
-    return score
+    if DO_NORMALIZE_SCORE:
+        return score if not norm else normalize_score(score)
+    else:
+        return score
 
 def final_score_song(S):
     if isinstance(S, tuple):
@@ -366,15 +379,25 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_S = S.copy()
     last_A = A.copy()
 
-    def norm_rewards(reward_matrix):
-        if reward_matrix[reward_matrix > 1].size:
-            pass
-        max_r = reward_matrix.max()
-        min_r = reward_matrix.min()
-        return (reward_matrix - min_r)/(max_r - min_r)
+    def norm_rewards(reward_matrix1, reward_matrix2):
+        if REWARD_STRATEGY == RewardStrategy.NOOP:
+            return reward_matrix1, reward_matrix2
+        elif REWARD_STRATEGY == REWARD_STRATEGY.NORMALIZE_INDEPENDENT:
+            max_r1 = reward_matrix1.max()
+            min_r1 = reward_matrix1.min()
+            reward_matrix1 = (reward_matrix1 - min_r1)/(max_r1 - min_r1)
+            max_r2 = reward_matrix2.max()
+            min_r2 = reward_matrix2.min()
+            reward_matrix2 = (reward_matrix2 - min_r2)/(max_r2 - min_r2)
+            return reward_matrix1, reward_matrix2
+        else:
+            max_r = max(reward_matrix1.max(), reward_matrix2.max())
+            min_r = min(reward_matrix1.min(), reward_matrix2.min())
+            reward_matrix1 = (reward_matrix1 - min_r)/(max_r - min_r)
+            reward_matrix2 = (reward_matrix2 - min_r)/(max_r - min_r)
+            return reward_matrix1, reward_matrix2
 
-    #reward_matrix1 = norm_rewards(reward_matrix1)
-    #reward_matrix2 = norm_rewards(reward_matrix2)
+    reward_matrix1, reward_matrix2 = norm_rewards(reward_matrix1, reward_matrix2)
 
     def compute_exp(P, R):
         n = P.shape[0]
