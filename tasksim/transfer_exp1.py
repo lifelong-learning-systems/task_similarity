@@ -114,7 +114,7 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                     source_actions = source_env.graph.out_s[source_state]
                     target_actions = target_env.graph.out_s[target_state]
                     action_subset = action_sim[source_actions].T[target_actions].T
-                    action_mat = ot.emd(action_dist, action_dist, action_subset.copy())
+                    action_mat = sim.sim_matrix(action_subset.copy())
                     assert action_mat[action_mat != 0].size == n_actions, 'Unexpected number of entries'
                     col_order = np.argmax(action_mat, axis=1)
                 
