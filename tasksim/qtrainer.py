@@ -33,6 +33,7 @@ class QTrainer:
         """
         
         self.env = env
+        self.num_states = env.graph.P.shape[1]
         
         self.Q = None #Q table
         self.learning = learning 
@@ -59,6 +60,7 @@ class QTrainer:
             self.decay = decay
             self.episode = 0
             self.rewards = []
+            self.steps = []
         
         self.total_rewards = 0
 
@@ -76,14 +78,14 @@ class QTrainer:
             self.decay = obj['decay']
             self.Q = np.asarray_chkfinite(obj['Q'])
             self.rewards = obj['rewards']
+            self.steps = obj['steps']
             self.episode = obj['episode']
 
-            assert self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1] == len(self.Q), 'error: Qtable statespace mismatch'
+            assert len(self.Q) == self.num_states, 'error: Qtable statespace mismatch'
             
 
     def _create_table(self):
-        num_states = self.env.graph.grid.shape[0] * self.env.graph.grid.shape[1]
-        self.Q = np.zeros((num_states, 4))
+        self.Q = np.zeros((self.num_states, 4))
         
     # Return new instance of QTrainer with transfered weights
     # pass in S, A as distances/metrics
@@ -121,32 +123,32 @@ class QTrainer:
                             w = 1 if S[s_i, :].argmax() == s_j else 0
                         other.Q[s_i, a_i] += w*self.Q[s_j, a_j]
 
-    def reset(self, center=True):
+    def reset(self, center=False):
         self.episode += 1
         return self.env.reset(center=False)
 
     #step using Q table or provided action
-    def step(self, action=None, center=True):
+    def step(self, action=None, center=False):
         
         if(action == None):
             action = self._choose_action()
 
-        old_state = self.env.state
+        old_grid_state = self.env.state
+        old_mdp_state = self.env.grid_to_state(old_grid_state)
 
-        graph_action = self.env.graph.out_s[self.env.state][action]
+        graph_action = self.env.graph.out_s[old_mdp_state][action]
         transitions = self.env.graph.P[graph_action]
         indices = np.array([i for i in range(len(transitions))])
-        state = self.env.random_state.choice(indices, p=transitions)
-        self.env.state = state
-        reward = self.env.graph.R[graph_action][state]
+        new_mdp_state = self.env.random_state.choice(indices, p=transitions)
+        new_grid_state = self.env.state_to_grid(new_mdp_state)
+        self.env.state = new_grid_state
+        reward = self.env.graph.R[graph_action][new_mdp_state]
 
-        new_state = self.env.state
-        
         if self.learning:
-            self.Q[old_state, action] = self.Q[old_state, action]+self.lr*(reward+self.gamma*np.max(self.Q[new_state, :])-self.Q[old_state, action])
-            self.epsilon = max(0, self.epsilon - self.decay)
+            self.Q[old_mdp_state, action] = self.Q[old_mdp_state, action]+self.lr*(reward+self.gamma*np.max(self.Q[new_mdp_state, :])-self.Q[old_mdp_state, action])
+            self.epsilon = max(self.min_epsilon, self.epsilon - self.decay)
             
-        row, col = self.env.row_col(state)
+        row, col = self.env.row_col(new_grid_state)
         done = self.env.grid[row, col] == 2
             
         return self.env.gen_obs(center=center), reward, done, {}
@@ -157,7 +159,9 @@ class QTrainer:
         prob_random = random.uniform(0, 1)
 
         if not self.learning or prob_random > self.epsilon:
-            action = np.argmax(self.Q[self.env.state, :])
+            grid_state = self.env.state
+            mdp_state = self.env.grid_to_state(grid_state)
+            action = np.argmax(self.Q[mdp_state, :])
         else:
             action = self.env.action_space.sample()
         
@@ -166,15 +170,21 @@ class QTrainer:
     def compute_action(self, _):
         return self._choose_action()
 
-    def run(self, num_iters=7500, episodic=True, early_stopping=False, threshold=.8):
+    def run(self, num_iters=7500, episodic=True, early_stopping=False, threshold=.8, threshold_N=20, record=False, max_eps=None):
         
+        # TODO:
+        # if record: (RECORD THE OBSERVATIONS!)
         total_episode = 0
         total_step = 0
         performance = 0
         episodes = list(range(num_iters))
         steps = list(range(num_iters))
         
-        optimal = self.compute_optimal_path(self.env.fixed_start) if early_stopping and self.env.fixed_start is not None else None
+        tmp_optimal = self.compute_optimal_path(self.env.fixed_start) if early_stopping and self.env.fixed_start is not None else None
+        if tmp_optimal is not None:
+            optimal = tmp_optimal[0]
+        else:
+            optimal = None
 
         if episodic:    
             for _ in progress_bar(episodes, prefix='Q_training(episodic)', suffix='Complete'):
@@ -185,7 +195,7 @@ class QTrainer:
                 step = 0
                 
                 
-                while not done and step < 5000:
+                while not done and step < 1e6:
                     obs, reward, done, _ = self.step()
                     self.total_rewards += reward
                     step += 1
@@ -202,6 +212,7 @@ class QTrainer:
                     
 
                 self.rewards.append(self.total_rewards)
+                self.steps.append(step)
 
         elif not episodic:
             self.total_rewards = 0
@@ -211,17 +222,27 @@ class QTrainer:
             for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
                 if done:
                     obs = self.env.reset()
+                    done = False
                     self.rewards.append(self.total_rewards)
+                    self.steps.append(step)
                     
-                    if optimal is not None:
-                        performance = optimal / step
-                        if performance >= threshold:
-                            if self.save:
-                                self.save_table()
-                            return total_episode, total_step, performance
 
                     step = 0
                     total_episode += 1
+                    if total_episode >= threshold_N:
+                        avg_perf = np.array(self.steps[-threshold_N:]).mean()
+                        if optimal is not None:
+                            if total_episode % 1000 == 0:
+                                print(f'\tAvg perf percent: {optimal/avg_perf}')
+                            performance = optimal / avg_perf
+                            if performance >= threshold:
+                                if self.save:
+                                    self.save_table()
+                                return total_episode, total_step, performance
+                        if max_eps is not None and total_episode >= max_eps:
+                            if self.save:
+                                self.save_table()
+                            return total_episode, total_step, performance
                 
                 obs, reward, done, _ = self.step()
                 self.total_rewards += reward
@@ -246,6 +267,7 @@ class QTrainer:
             data['decay'] = self.decay
             data['Q'] = self.Q.tolist()
             data['rewards'] = self.rewards
+            data['steps'] = self.steps
             data['episode'] = self.episode
             json.dump(data, outfile)
 
@@ -255,30 +277,32 @@ class QTrainer:
         self.learning = False
         return test_env(self.env, self)
 
-    def compute_optimal_path(self, start_state):
+    def compute_optimal_path(self, grid_state):
         graph = self.env.graph
-        grid = self.env.graph.grid
-        strat = self.env.graph.strat
-        rows, cols = grid.shape
-        height, width = grid.shape
-        optimal_action_grid = np.nan * np.zeros(graph.grid.shape)
-        optimal_path_len = np.zeros(graph.grid.shape)
+        grid = graph.grid
+        width = grid.shape[1]
+        strat = graph.strat
         q = deque() # q.append(x) -> pushes on to the right side, q.popleft() -> removes and returns from left
-        q.append((start_state, []))
+
+        q.append((grid_state, []))
         found = None
         visited = set()
         while len(q):
-            cur_state, cur_path = q.popleft()
-            if cur_state in visited:
+            cur_grid_state, cur_path = q.popleft()
+            if cur_grid_state in visited:
                 continue
-            visited.add(cur_state)
+            visited.add(cur_grid_state)
             # left, right, up, down, noop
-            adjacent = gen.MDPGraph.get_valid_adjacent(cur_state, grid, strat)
+            # These are all grid states
+            adjacent = gen.MDPGraph.get_valid_adjacent(cur_grid_state, grid, strat)
             filtered = [a for a in adjacent if a is not None]
-            out_actions = graph.out_s[cur_state]
+
+            cur_mdp_state = self.env.grid_to_state(cur_grid_state)
+            out_actions = graph.out_s[cur_mdp_state]
             assert len(out_actions) == len(filtered), 'darn, something went wrong'
+
             for id, f in enumerate(filtered):
-                if f == cur_state:
+                if f == cur_grid_state:
                     continue
                 looped = False
                 for path_state, _ in cur_path:
@@ -291,7 +315,7 @@ class QTrainer:
                 row = f // width
                 col = f - width*row
                 next_path = [c for c in cur_path]
-                next_path.append((cur_state, action))
+                next_path.append((cur_grid_state, action))
                 if grid[row, col] == 2:
                     found = (f, next_path)
                     break
@@ -300,20 +324,11 @@ class QTrainer:
             if found is not None:
                 break
         if found is None:
-            return 0
+            return None, None
         _, goal_path = found
         # goal_path is an optimal deterministic path from start_state to a goal_state
         # graph.P: Actions - Distribution among States
-        for state, action in goal_path:
-            row = state // width
-            col = state - width*row
-            entry = optimal_action_grid[row, col]
-            if np.isnan(entry):
-                optimal_action_grid[row, col] = action
-            elif entry != action:
-                print('WARNING: found mismatched optimal entry???')
-                continue
-        return len(goal_path)
+        return len(goal_path), goal_path
 
 
        
@@ -455,7 +470,6 @@ if __name__ == '__main__':
         S, A, num_iters, _ = env.graph.compare(base_env.graph)
         score = 1 - sim.final_score(S)
         similarity_scores.append(score)
-        #import pdb; pdb.set_trace()
         performance_runs = []
 
         if env.fixed_start is not None and env.grid[unravel(env.fixed_start)] == 1:

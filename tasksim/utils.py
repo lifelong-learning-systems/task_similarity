@@ -30,9 +30,11 @@ emd_c_chunk = get_emd_c_chunk()
 
 NUM_CPU = None
 RAY_INFO = None
+MIN_COMP = None
 def init_ray():
     global NUM_CPU
     global RAY_INFO
+    global MIN_COMP
     DEBUG_PRINT = True
     try:
         RAY_INFO = ray.init(address='auto', logging_level=logging.FATAL)
@@ -49,15 +51,21 @@ def init_ray():
     if DEBUG_PRINT:
         print(f'TaskSim: Ray initialized with {NUM_CPU} CPUs')
         print(f'TaskSim: Preparing ray workers..')
-    from .gridworld_generator import compare_shapes2_norm
-    # TODO: use a proper Pool instead
-    # Basically a clean pass through, initialize the workers, etc.
-    _ = compare_shapes2_norm((1, 1), (1, 1))
+    from .gridworld_generator import compare_shapes, ActionStrategy
+    from .structural_similarity import final_score
+    # TODO: invoking with (1, 1) doesn't truly produce lowest value...why?
+    MIN_COMP = final_score(compare_shapes((1, 1), (1, 1), strat=ActionStrategy.NOOP_EFFECT_COMPRESS), norm=False)
     if DEBUG_PRINT:
-        print(f'TaskSim: Ray initialization complete!')
+        print(f'TaskSim: Ray initialization complete! Min score is {MIN_COMP}')
 
 def get_num_cpu():
     while NUM_CPU is None:
         print('TaskSim: attempting to invoke without Ray initialized...')
         init_ray()
     return NUM_CPU
+
+def get_min_comp():
+    while MIN_COMP is None:
+        print('TaskSim: attempting to invoke without Ray initialized...')
+        init_ray()
+    return MIN_COMP

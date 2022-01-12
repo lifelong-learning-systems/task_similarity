@@ -37,9 +37,13 @@ class EnvironmentBuilder:
         self.strat = gen.ActionStrategy.WRAP_NOOP_EFFECT
         self.obs_size = 7
         self.fixed_start = None
+        self.do_render = True
     
     def set_obs_size(self, obs_size):
         self.obs_size = obs_size
+        return self
+    def set_do_render(self, do_render):
+        self.do_render = do_render
         return self
     def set_strat(self, strat):
         self.strat = strat
@@ -112,7 +116,7 @@ class EnvironmentBuilder:
         transition_random_state = self.coalesce_random(transition_random_state)
         if self.transition_noise > 0:
             G = add_noise(G, self.transition_noise, transition_random_state)
-        env = MDPGraphEnv(graph=G, obs_size=self.obs_size, random_state=env_random_state, fixed_start=self.fixed_start)
+        env = MDPGraphEnv(graph=G, obs_size=self.obs_size, do_render=self.do_render, random_state=env_random_state, fixed_start=self.fixed_start)
         return env
     
     # Utility functions

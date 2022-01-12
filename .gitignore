@@ -9,3 +9,6 @@ build/
 **/*.so
 **/*_api.h
 **/*.DS_Store
+
+tasksim/results_transfer
+tasksim/cache_results

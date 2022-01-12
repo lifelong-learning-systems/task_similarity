@@ -43,13 +43,15 @@ COMPRESS_STRATS = [ActionStrategy.SUBSET_COMPRESS, ActionStrategy.NOOP_EFFECT_CO
 # Simple-ish wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
 
-    def __init__(self, P, R, out_s, out_a, available_actions, grid, strat):
+    def __init__(self, P, R, out_s, out_a, available_actions, grid, strat, states_to_grid, grid_to_states):
         self.P = P.copy()
         self.R = R.copy()
         self.out_s = out_s.copy()
         self.out_a = out_a.copy()
         self.available_actions = available_actions.copy()
         self.grid = grid.copy()
+        self.states_to_grid = states_to_grid.copy()
+        self.grid_to_states = grid_to_states.copy()
         self.strat = strat
 
     @classmethod
@@ -59,8 +61,8 @@ class MDPGraph:
 
     @classmethod
     def from_grid(cls, grid, success_prob=0.9, reward=1, strat=ActionStrategy.NOOP_ACTION):
-        P, R, out_s, out_a, available_actions  = cls.grid_to_graph(grid, success_prob, reward=reward, strat=strat)
-        return cls(P, R, out_s, out_a, available_actions, grid, strat)
+        P, R, out_s, out_a, available_actions, states_to_grid, grid_to_states  = cls.grid_to_graph(grid, success_prob, reward=reward, strat=strat)
+        return cls(P, R, out_s, out_a, available_actions, grid, strat, states_to_grid, grid_to_states)
 
     # 5 moves: left = 0, right = 1, up = 2, down = 3, no-op = 4
     @classmethod
@@ -175,10 +177,10 @@ class MDPGraph:
             for g in goal_states:
                 if P[i, g] > 0:
                     R[i, g] = reward
-        return P, R, out_neighbors_s, out_neighbors_a, available_actions
+        return P, R, out_neighbors_s, out_neighbors_a, available_actions, states_to_grid, grid_to_states
     
     def copy(self):
-        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions, self.grid, self.strat)
+        return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions, self.grid, self.strat, self.states_to_grid, self.grid_to_states)
 
     # reorders the out-actions of the specified state
     # can apply different permutations within an MDP and/or between MDPs

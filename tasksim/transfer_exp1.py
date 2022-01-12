@@ -1,0 +1,281 @@
+import os
+from typing import List
+
+from numpy.lib.utils import source
+import tasksim
+import tasksim.structural_similarity as sim
+import tasksim.gridworld_generator as gen
+
+import argparse
+import numpy as np
+import ot
+import pickle
+
+from tasksim.qtrainer import *
+
+STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
+RESULTS_DIR = 'results_transfer'
+
+# Hyper parameters for qtrainer
+GAMMA = 0.1
+TEST_ITER = int(1e5)
+
+
+
+# From https://stackoverflow.com/a/54628145
+def moving_average(x, w):
+    return np.convolve(x, np.ones(w), 'valid') / w
+
+def create_envs(num_mazes, dim, prob, prng, obs_max=0.5):
+    dimensions = (dim, dim)
+    # Always upper left to bottom right
+    start = 0
+    goal = np.prod(dimensions) - 1
+    target_env = None
+    source_envs = []
+    # Generate 1 more, since it'll be the target env
+    # Then, generate 10x the amount, and select the top `num_mazes` (in terms of distance) to be compared to?
+    print('Computing grids...')
+    rejected = 0
+    for i in range(num_mazes + 1):
+        while True:
+            obs_prob = (1 + prng.rand() * obs_max) / 2
+            obstacles = []
+            for state in range(np.prod(dimensions)):
+                if state == start or state == goal:
+                    continue
+                if prng.rand() < obs_prob:
+                    obstacles.append(state)
+            env = EnvironmentBuilder(dimensions).set_strat(STRAT) \
+                                                .set_goals([goal]) \
+                                                .set_fixed_start(start) \
+                                                .set_success_prob(prob) \
+                                                .set_obs_size(dim) \
+                                                .set_do_render(False) \
+                                                .set_obstacles(obstacles) \
+                                                .build()
+            trainer = QTrainer(env, save=False)
+            path_len, _ = trainer.compute_optimal_path(start)
+            if path_len is not None:
+                break
+            else:
+                rejected += 1
+                #print('No path found, generating new grid!')
+        if i == 0:
+            target_env = env
+        else:
+            source_envs.append(env)
+    print('Rejected', rejected, 'grids.')
+    return target_env, source_envs
+
+def test_env(target_env, new_Q, label, max_eps=None, restore=False):
+    agent_path = f'{RESULTS_DIR}/target_{label}.json'
+    if path.exists(agent_path) and not restore:
+        print(f'Deleting {agent_path} so as to not restore')
+        os.remove(agent_path)
+    elif path.exists(agent_path) and restore:
+        print(f'Restoring from {agent_path}')
+        restored = True
+    
+    num_iters = int(TEST_ITER)
+    trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.2, min_epsilon=0.1, decay=5.0/num_iters)
+    trainer.Q = new_Q
+    trainer.run(num_iters, episodic=False, max_eps=max_eps)
+    return trainer
+
+def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List):
+    assert len(sim_mats), 'Sources must be non empty'
+    new_states = target_env.graph.P.shape[1]
+    # TODO: don't assume 4 actions, but whatever
+    new_Q = np.zeros((new_states, 4))
+
+    N = len(sim_mats)
+    w_base = 1/N
+    for source_env, sim_mat, source_Q, action_sim in zip(source_envs, sim_mats, source_Qs, action_sims):
+        other_states, _ = source_Q.shape
+        assert sim_mat.shape == (other_states, new_states), 'Incorrects sim shape'
+        column_sums = np.sum(sim_mat, axis=0)
+        #action_sim_transpose = action_sim.T
+        for target_state in range(new_states):
+            for source_state in range(other_states):
+                w_sim = sim_mat[source_state, target_state]
+                w_col = column_sums[target_state]
+                w = w_base*w_sim/w_col
+                # TODO: figure out action-space correspondence first!
+                if action_sim is not None:
+                    source_actions = source_env.graph.out_s[source_state]
+                    target_actions = target_env.graph.out_s[target_state]
+                    action_subset = action_sim[source_actions].T[target_actions].T
+                    #action_subset_transpose = action_sim_transpose[target_actions].T[source_actions].T
+                    if w_sim != 0:
+                        #print('yay')
+                        pass
+                new_Q[target_state, :] += w*source_Q[source_state, :]
+    return new_Q
+
+
+def perform_exp(metric, dim, prob, num_mazes, seed, restore=False):
+    prng = np.random.RandomState(seed)
+    print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
+    target_env, source_envs = create_envs(num_mazes, dim, prob, prng)
+
+
+    repeat = 1
+    num_iters = int(1e7)
+    min_eps = 100
+    threshold = 0.9
+    print('Training agents...')
+    for _ in range(repeat):
+        trainers = []
+        optimal = []
+        for i, env in enumerate(source_envs):
+            print(f'Training agent {i} / {len(source_envs)}...')
+            agent_path = f'{RESULTS_DIR}/source_{i}.json'
+            restored = False
+            if path.exists(agent_path) and not restore:
+                print(f'Deleting {agent_path} so as to not restore')
+                os.remove(agent_path)
+            elif path.exists(agent_path) and restore:
+                print(f'Restoring from {agent_path}')
+                restored = True
+            # TODO: Reduce decay if needed
+            trainer = QTrainer(env, agent_path, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
+            optimal_len, _ = trainer.compute_optimal_path(env.fixed_start)
+            if restored:
+                trainers.append(trainer)
+                optimal.append(optimal_len)
+                continue
+
+            trainer.run(num_iters=num_iters, episodic=False, early_stopping=True, threshold=threshold, record=True)
+            num_eps = len(trainer.steps)
+            if num_eps < min_eps:
+                print(f'Training failure, {num_eps} episodes completed. Continuing with more training...')
+                assert False
+            print(f'Final epsilon {trainer.epsilon}')
+            trainers.append(trainer)
+            optimal.append(optimal_len)
+        for idx, trainer in enumerate(trainers):
+            avg_steps = moving_average(trainer.steps, int(0.05*len(trainer.steps)))
+            print(f'agent {idx}, number of steps: {avg_steps[-1]}; optimal: {optimal[idx]}')
+
+
+    data_path = f'{RESULTS_DIR}/{metric}_data.pkl'
+    restored = False
+    if path.exists(data_path) and not restore:
+        print(f'Deleting {data_path} so as to not restore')
+        os.remove(data_path)
+    elif path.exists(data_path) and restore:
+        print(f'Restoring from {data_path}')
+        restored = True
+    if not restored:
+        scores = []
+        dist_mats = []
+        sim_mats = []
+        action_sims = []
+        print('Caching sim/dist matrices...')
+        for idx, env in enumerate(source_envs):
+            print(f'Comparing MDP {idx} / {len(source_envs)}...')
+            if metric == 'new':
+                D, A, _, _ = env.graph.compare(target_env.graph)
+                score = sim.final_score(D)
+                sim_mat = sim.sim_matrix(D)
+            else:
+                D = env.graph.compare_song(target_env.graph)[0]
+                A = None
+                score = sim.final_score_song(D)
+                sim_mat = sim.sim_matrix_song(D)
+            scores.append(score)
+            dist_mats.append(D)
+            action_sims.append(A)
+            sim_mats.append(sim_mat)
+        data = {'scores': scores, 'dist_mats': dist_mats, 'sim_mats': sim_mats, 'action_sims': action_sims}
+        print('Pickling data to restore later...')
+        with open(data_path, 'wb') as f:
+            pickle.dump(data, f)
+    else:
+        with open(data_path, 'rb') as f:
+            data = pickle.load(f)
+    
+    # Now, do the actual weight transfer
+    # TODO: measure performance, average many results lol
+    n_trials = 50
+    first_50_total = None
+    # End trial early if reaching this many completed episodes...
+    max_eps = 101
+    for trial in range(n_trials):
+        print('TRANSFER TRIAL', trial, '/', n_trials)
+        idx = 0
+        optimal_percents = []
+        transferred_trainers = []
+        for sim_mat, score, trainer in zip(data['sim_mats'], data['scores'], trainers):
+            source_Q = trainer.Q
+            label = f'{metric}_{idx}'
+            if metric == 'new':
+                action_sim = data['action_sims'][idx]
+            else:
+                action_sim = None
+            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim])
+            print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
+            new_trainer = test_env(target_env, new_Q, label, max_eps=max_eps, restore=restore)
+            print(f'\tDistance score: {score}')
+            print(f'\tEpisodes completed: {len(new_trainer.steps)}')
+            num_eps = 20
+            optimal_len = optimal[idx]
+            if not len(new_trainer.steps):
+                percent_optimal = 0
+                print(f'\tLast {0} episode avg. steps: {np.inf}, percent of optimal: {percent_optimal}')
+            elif len(new_trainer.steps) < 20:
+                percent_optimal = optimal_len / np.array(new_trainer.steps).mean()
+                print(f'\tLast {len(new_trainer.steps)} episode avg. steps: {np.array(new_trainer.steps).mean()}'\
+                    f', percent of optimal: {percent_optimal}')
+            else:
+                avg_steps = moving_average(new_trainer.steps, 20)
+                percent_optimal = optimal_len / avg_steps[-1]
+                print(f'\tLast {num_eps} episode avg. steps: {avg_steps[-1]}'\
+                    f', percent of optimal: {percent_optimal}')
+            optimal_percents.append(percent_optimal)
+            transferred_trainers.append(new_trainer)
+            idx += 1
+        first_50 = np.array([np.array(x.steps[:100]).mean() for x in transferred_trainers])
+        if first_50_total is None:
+            first_50_total = first_50.copy()
+        else:
+            first_50_total += first_50
+    first_50_avg = first_50_total/n_trials
+    with open(f'{RESULTS_DIR}/{metric}_res.txt', 'w+') as f:
+        f.write('[' + ', '.join(['%.5f' % x for x in first_50_avg]) + ']\n')
+        f.write('[' + ', '.join([('%.5f' % x) for x in data['scores']]) + ']\n')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    metric_choices = ['both', 'new', 'song']
+    parser.add_argument('--metric', default=metric_choices[0], choices=metric_choices, help='Which metric to use.')
+    parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
+    parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
+    parser.add_argument('--num', help='Number of source mazes to randomly generate', default=8)
+    parser.add_argument('--prob', help='Transition probability', default=1)
+    parser.add_argument('--restore', help='Restore or not', action='store_true')
+
+    args = parser.parse_args()
+
+    seed = int(args.seed)
+    dim = int(args.dim)
+    num_mazes = int(args.num)
+    prob = float(args.prob)
+    prob = max(prob, 0)
+    prob = min(prob, 1)
+    metric = args.metric
+    restore = args.restore
+
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, restore=restore)
+    if metric == 'both':
+        bound('new')
+        bound('song')
+    else:
+        bound(metric)
+    
+    
+    
+
+

@@ -8,7 +8,7 @@ from enum import Enum
 import ray
 import scipy
 
-from tasksim.utils import emd_c, emd_c_chunk, get_num_cpu, init_ray
+from tasksim.utils import emd_c, emd_c_chunk, get_num_cpu, init_ray, get_min_comp
 import process_chunk as pc
 from numba import jit
 from numba.extending import get_cython_function_address
@@ -61,7 +61,14 @@ def compute_constant_limit(c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     #limit_a = C/(1 - A)
     return 1 - limit_s
 
-def final_score(S, c_n=1.0):
+def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
+    # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
+    #limit = compute_constant_limit(c_a, c_s)
+    limit = get_min_comp()
+    # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
+    return (score - limit) / (1 - limit)
+
+def final_score(S, c_n=1.0, norm=True):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
@@ -69,7 +76,8 @@ def final_score(S, c_n=1.0):
     b = np.array([1/nt for _ in range(nt)])
     #d_num_states = (1 - 1/(abs(ns - nt) + 1))
     d_num_states = 1 - min(ns/nt, nt/ns)
-    return c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
+    score =  c_n * ot.emd2(a, b, 1-S) + (1 - c_n) * d_num_states
+    return score if not norm else normalize_score(score)
     # import pdb; pdb.set_trace()
     # haus1 = directed_hausdorff_numpy(1 - S, list(range(ns)), list(range(nt)))
     # haus2 = directed_hausdorff_numpy((1 - S).T, list(range(nt)), list(range(ns)))
@@ -83,11 +91,22 @@ def final_score_song(S):
     b = np.array([1/nt for _ in range(nt)])
     return ot.emd2(a, b, S)
 
-def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
-    # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
-    limit = compute_constant_limit(c_a, c_s)
-    # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
-    return 1 - (1 - score)/(1 - limit)
+def sim_matrix(S):
+    if isinstance(S, tuple):
+        S = S[0]
+    ns, nt = S.shape
+    a = np.array([1/ns for _ in range(ns)])
+    b = np.array([1/nt for _ in range(nt)])
+    return ot.emd(a, b, 1 - S)
+
+
+def sim_matrix_song(S):
+    if isinstance(S, tuple):
+        S = S[0]
+    ns, nt = S.shape
+    a = np.array([1/ns for _ in range(ns)])
+    b = np.array([1/nt for _ in range(nt)])
+    return ot.emd(a, b, S)
 
 def truncate_score(score, num_decimal=3):
     mul = 10**num_decimal
@@ -221,6 +240,7 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                                      c=DEFAULT_CA, stop_tol=1e-2, max_iters=1e5):
     _, n_states1 = action_dists1.shape
     _, n_states2 = action_dists2.shape
+    #assert n_states1 >= 2 and n_states2 >= 2, f'Min n_states is at least 2; invoked with {n_states1} and {n_states2}'
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
@@ -319,6 +339,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
+    #assert n_states1 >= 2 and n_states2 >= 2, f'Min n_states is at least 2; invoked with {n_states1} and {n_states2}'
 
     # Initialization SHOULDN'T matter that much...
     # zeros means normalizing slightly overshoots (positive)

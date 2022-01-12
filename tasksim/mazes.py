@@ -71,7 +71,7 @@ def build_maze(dimensions: Tuple[int], path: List[int]):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    metric_choices = ['new', 'song']
+    metric_choices = ['new', 'song', 'both']
     parser.add_argument('--metric', default=metric_choices[0], choices=metric_choices, help='Which metric to use.')
     parser.add_argument('--rand', action='store_true', help='Use randomly generated mazes, as per seed')
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=81923673)
@@ -89,92 +89,100 @@ if __name__ == '__main__':
     prob = min(prob, 1)
     metric = args.metric
 
-    if not use_rand:
-        dimensions = (9, 9)
-        empty_env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
+    def perform_exp():
+        if not use_rand:
+            dimensions = (9, 9)
+            empty_env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([ravel(0, 8, *dimensions)]).set_fixed_start(ravel(8, 0, *dimensions)).set_success_prob(1.0).set_obs_size(9).build()
 
-        maze1 = [UP] * 9 + [RIGHT] * 9
-        maze2 = [UP, UP, RIGHT, RIGHT] * 4
-        maze3 = [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*4 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [LEFT]*2 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [RIGHT]*2 + [UP]*9
-        maze4 = [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8
-        maze5 = [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8
-        maze6 = [RIGHT]*8 + [UP]*4 + [LEFT]*8 + [UP]*4 + [RIGHT]*8
+            maze1 = [UP] * 9 + [RIGHT] * 9
+            maze2 = [UP, UP, RIGHT, RIGHT] * 4
+            maze3 = [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*2 + [UP]*2 + [LEFT]*2 + [UP]*2 + [RIGHT]*4 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [LEFT]*2 + [DOWN]*2 + [RIGHT]*2 + [DOWN]*2 + [RIGHT]*2 + [UP]*9
+            maze4 = [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8 + [UP]*2 + [LEFT]*8 + [UP]*2 + [RIGHT]*8
+            maze5 = [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8 + [RIGHT]*2 + [DOWN]*8 + [RIGHT]*2 + [UP]*8
+            maze6 = [RIGHT]*8 + [UP]*4 + [LEFT]*8 + [UP]*4 + [RIGHT]*8
+            
+
+            mazes = [maze1, maze2, maze3, maze4, maze5, maze6]
+            envs = create_mazes(dimensions, mazes)
+            envs.insert(0, empty_env)
+        else:
+            dimensions = (dim, dim)
+            prng = np.random.RandomState(seed)
+            grids = []
+            obs_max = 0.4
+            envs = []
+            # upper right
+            goal = ravel(0, 8, *dimensions)
+            # bottom left
+            start = ravel(8, 0, *dimensions)
+            for _ in range(num_mazes):
+                obs_prob = prng.rand()*obs_max
+                num_states = np.prod(dimensions)
+                states = np.arange(num_states)
+                states = states[(states != goal) & (states != start) & (states != start + 1) & (states != start - dim) \
+                                & (states != goal - 1) & (states != goal + dim)]
+                obstacles = []
+                for s in states:
+                    if prng.rand() < obs_prob:
+                        obstacles.append(s)
+                env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([goal]) \
+                                                        .set_fixed_start(start) \
+                                                        .set_success_prob(prob).set_obs_size(9) \
+                                                        .set_obstacles(obstacles).build()
+                envs.append(env)
         
+        sim_scores : List[List[float]] = []
+        unique_scores = set()
+        precision = 6
+        precision_str = f'%.{precision}f'
+        for i in range(len(envs)):
+            scores = []
+            for j in range(len(envs)):
+                print(i, j, '...')
+                score, S = dist_score(envs[i], envs[j], metric=metric, detailed=True)
+                score = float(precision_str % score)
+                unique_scores.add(score)
+                scores.append(score)
 
-        mazes = [maze1, maze2, maze3, maze4, maze5, maze6]
-        envs = create_mazes(dimensions, mazes)
-        envs.insert(0, empty_env)
+            sim_scores.append(scores)
+
+        cnt = len(envs)
+        fig, axs = plt.subplots(cnt, cnt * 2, figsize=(25, 13))
+
+        for i in range(len(axs)):
+            num = 0
+            idx = 0 
+            for j in range(len(axs[i])):
+                if num % 2 == 0:
+                    #show next idx env
+                    axs[i, j].imshow(envs[idx].reset(center=False))
+
+                    title = "score:" +  str(sim_scores[idx][i])
+                    axs[i, j].xaxis.set_label_coords(1.25, 1.20)
+                    axs[i, j].set_xlabel(title)
+                    #increment idx
+                    idx += 1
+                else:
+                    #show current i env
+                    axs[i, j].imshow(envs[i].reset(center=False))
+                
+                num += 1
+                
+
+        fig.tight_layout(pad=0.2)
+
+        rand_str = '_rand' if use_rand else ''
+        prob_str = f'_{prob}' if prob != 1 else ''
+        plt.savefig(f'maze_out/maze_{metric}{rand_str}{prob_str}.png')
+        print(sim_scores)
+        print(unique_scores)
+    if metric == 'both':
+        metric = 'new'
+        perform_exp()
+        metric = 'song'
+        perform_exp()
     else:
-        dimensions = (dim, dim)
-        prng = np.random.RandomState(seed)
-        grids = []
-        obs_max = 0.4
-        envs = []
-        # upper right
-        goal = ravel(0, 8, *dimensions)
-        # bottom left
-        start = ravel(8, 0, *dimensions)
-        for _ in range(num_mazes):
-            obs_prob = prng.rand()*obs_max
-            num_states = np.prod(dimensions)
-            states = np.arange(num_states)
-            states = states[(states != goal) & (states != start) & (states != start + 1) & (states != start - dim) \
-                            & (states != goal - 1) & (states != goal + dim)]
-            obstacles = []
-            for s in states:
-                if prng.rand() < obs_prob:
-                    obstacles.append(s)
-            env = EnvironmentBuilder(dimensions).set_strat(STRAT).set_goals([goal]) \
-                                                      .set_fixed_start(start) \
-                                                      .set_success_prob(prob).set_obs_size(9) \
-                                                      .set_obstacles(obstacles).build()
-            envs.append(env)
-    
-    sim_scores : List[List[float]] = []
-    unique_scores = set()
-    precision = 6
-    precision_str = f'%.{precision}f'
-    for i in range(len(envs)):
-        scores = []
-        for j in range(len(envs)):
-            print(i, j, '...')
-            score, S = dist_score(envs[i], envs[j], metric=metric, detailed=True)
-            score = float(precision_str % score)
-            unique_scores.add(score)
-            scores.append(score)
-
-        sim_scores.append(scores)
-
-    cnt = len(envs)
-    fig, axs = plt.subplots(cnt, cnt * 2, figsize=(25, 13))
-
-    for i in range(len(axs)):
-        num = 0
-        idx = 0 
-        for j in range(len(axs[i])):
-            if num % 2 == 0:
-                #show next idx env
-                axs[i, j].imshow(envs[idx].reset(center=False))
-
-                title = "score:" +  str(sim_scores[idx][i])
-                axs[i, j].xaxis.set_label_coords(1.25, 1.20)
-                axs[i, j].set_xlabel(title)
-                #increment idx
-                idx += 1
-            else:
-                #show current i env
-                axs[i, j].imshow(envs[i].reset(center=False))
-            
-            num += 1
-            
-
-    fig.tight_layout(pad=0.2)
-
-    rand_str = '_rand' if use_rand else ''
-    prob_str = f'_{prob}' if prob != 1 else ''
-    plt.savefig(f'maze_out/maze_{metric}{rand_str}{prob_str}.png')
-    print(unique_scores)
-    #plt.show()
+        perform_exp()
     
     
     
