@@ -87,7 +87,7 @@ def test_env(target_env, new_Q, label, max_eps=None, restore=False):
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
     return trainer
 
-def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List):
+def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List, use_action=True):
     assert len(sim_mats), 'Sources must be non empty'
     new_states = target_env.graph.P.shape[1]
     # TODO: don't assume 4 actions, but whatever
@@ -108,11 +108,9 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                 w_col = column_sums[target_state]
                 w = w_base*w_sim/w_col
 
-                total_weights = w*np.zeros(len(source_Q[source_state, :]))
-                
                 # TODO: figure out action-space correspondence first!
                 col_order = np.arange(n_actions)
-                if action_sim is not None:
+                if action_sim is not None and use_action:
                     source_actions = source_env.graph.out_s[source_state]
                     target_actions = target_env.graph.out_s[target_state]
                     action_subset = action_sim[source_actions].T[target_actions].T
