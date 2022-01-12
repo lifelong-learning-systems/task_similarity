@@ -20,6 +20,9 @@ import sys
 DEFAULT_CA = 0.5
 DEFAULT_CS = 0.995
 
+STOP_ATOL = 1e-4
+STOP_RTOL = 1e-3
+
 class InitStrategy(Enum):
     ZEROS = 1
     ONES = 2
@@ -267,21 +270,13 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
             probs, rewards = P[i], R[i]
             ret[i] = np.dot(probs, rewards)
         return ret
-    # expected_rewards_pos1, expected_rewards_neg1 = compute_exp(action_dists1, reward_matrix1)
-    # expected_rewards_pos2, expected_rewards_neg2 = compute_exp(action_dists2, reward_matrix2)
     expected_rewards1 = compute_exp(action_dists1, reward_matrix1)
     expected_rewards2 = compute_exp(action_dists2, reward_matrix2)
-    # def compute_diff(pos1, pos2):
-    #     diff = np.zeros((len(pos1), len(pos2)))
-    #     for i in range(len(pos1)):
-    #         for j in range(len(pos2)):
-    #             diff[i][j] = 0.5*abs(pos1[i] - pos2[j]) + 0.5*abs(neg1[i] - neg2[j])
-    #     return diff
-    # cached_reward_differences = compute_diff(expected_rewards_pos1, expected_rewards_pos2, expected_rewards_neg1, expected_rewards_neg2)
 
     # TODO: add performance optimizations as needed
     num_iters = 0
-    while not (delta < stop_tol):
+    #while not (delta < stop_tol):
+    while True:
         num_iters += 1
         for s_i in states1:
             for s_j in states2:
@@ -323,7 +318,10 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                     d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
                 #val = d_prime[s_i, s_j]
                 #print(val)
-        delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
+        
+        if np.allclose(d_prime, d, rtol=STOP_RTOL, atol=STOP_ATOL):
+            break
+        #delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
         from copy import deepcopy
         d = deepcopy(d_prime)
     return d, num_iters
@@ -331,8 +329,8 @@ cross_structural_similarity_song.WARNED = False
 
 # TODO: Change InitStrategy to be ONES? Would need to re-run experiments...
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
-                                out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
-                                stop_atol=1e-4, max_iters=1e5,
+                                out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=STOP_RTOL,
+                                stop_atol=STOP_ATOL, max_iters=1e5,
                                 init_strategy: InitStrategy = InitStrategy.ONES, self_similarity=False):
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape

@@ -220,6 +220,11 @@ class QTrainer:
             done = False
             step = 0
             for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
+                obs, reward, done, _ = self.step()
+                self.total_rewards += reward
+                step += 1
+                total_step += 1
+
                 if done:
                     obs = self.env.reset()
                     done = False
@@ -243,11 +248,6 @@ class QTrainer:
                             if self.save:
                                 self.save_table()
                             return total_episode, total_step, performance
-                
-                obs, reward, done, _ = self.step()
-                self.total_rewards += reward
-                step += 1
-                total_step += 1
 
         if self.save:
             self.save_table()

@@ -15,7 +15,7 @@ from tasksim.qtrainer import *
 
 ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
-RESULTS_DIR = 'tmp_results'
+RESULTS_DIR = 'results_tmp'
 
 # Hyper parameters for qtrainer
 GAMMA = 0.1
@@ -27,7 +27,7 @@ TEST_ITER = int(1e5)
 def moving_average(x, w):
     return np.convolve(x, np.ones(w), 'valid') / w
 
-def create_envs(num_mazes, dim, prob, prng, obs_max):
+def create_envs(num_mazes, dim, prob, prng, obs_max, reward=1):
     dimensions = (dim, dim)
     # Always upper left to bottom right
     start = 0
@@ -59,7 +59,7 @@ def create_envs(num_mazes, dim, prob, prng, obs_max):
             trainer = QTrainer(env, save=False)
             path_len, _ = trainer.compute_optimal_path(start)
             if path_len is not None:
-                env.graph.R *= 100
+                env.graph.R *= reward
                 break
             else:
                 rejected += 1
@@ -118,10 +118,10 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     return new_Q
 
 
-def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, restore=False):
+def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=False):
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
-    target_env, source_envs = create_envs(num_mazes, dim, prob, prng, obs_max)
+    target_env, source_envs = create_envs(num_mazes, dim, prob, prng, obs_max, reward)
 
     num_iters = int(1e7)
     min_eps = 100
@@ -201,7 +201,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, restore=False):
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 50
+    n_trials = 5
     first_50_total = None
     # End trial early if reaching this many completed episodes...
     max_eps = 101
@@ -267,6 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('--prob', help='Transition probability', default=1)
     parser.add_argument('--restore', help='Restore or not', action='store_true')
     parser.add_argument('--obsmax', help='Max obs probability, to be averaged with 1.0', default=0.5)
+    parser.add_argument('--reward', help='Goal reward', default=1)
     
     # TODO: cache params passed in, save in output directory; pass in RESULTS_DIR rather than assuming
     args = parser.parse_args()
@@ -280,10 +281,11 @@ if __name__ == '__main__':
     metric = args.metric
     restore = args.restore
     obs_max = float(args.obsmax)
+    reward = float(args.reward)
 
     ARG_DICT = vars(args)
 
-    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, restore=restore)
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=restore)
     if metric == 'both':
         bound('new')
         bound('song')
