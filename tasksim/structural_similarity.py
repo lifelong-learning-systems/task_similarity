@@ -373,6 +373,16 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     last_S = S.copy()
     last_A = A.copy()
 
+    def norm_rewards(reward_matrix):
+        if reward_matrix[reward_matrix > 1].size:
+            pass
+        max_r = reward_matrix.max()
+        min_r = reward_matrix.min()
+        return (reward_matrix - min_r)/(max_r - min_r)
+
+    reward_matrix1 = norm_rewards(reward_matrix1)
+    reward_matrix2 = norm_rewards(reward_matrix2)
+
     def compute_exp(P, R):
         n = P.shape[0]
         # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value

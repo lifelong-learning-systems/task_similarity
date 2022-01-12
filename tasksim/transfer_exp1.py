@@ -13,8 +13,9 @@ import pickle
 
 from tasksim.qtrainer import *
 
+ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
-RESULTS_DIR = 'results_transfer'
+RESULTS_DIR = 'tmp_results'
 
 # Hyper parameters for qtrainer
 GAMMA = 0.1
@@ -26,7 +27,7 @@ TEST_ITER = int(1e5)
 def moving_average(x, w):
     return np.convolve(x, np.ones(w), 'valid') / w
 
-def create_envs(num_mazes, dim, prob, prng, obs_max=0.5):
+def create_envs(num_mazes, dim, prob, prng, obs_max):
     dimensions = (dim, dim)
     # Always upper left to bottom right
     start = 0
@@ -38,8 +39,9 @@ def create_envs(num_mazes, dim, prob, prng, obs_max=0.5):
     print('Computing grids...')
     rejected = 0
     for i in range(num_mazes + 1):
+        print(i, '/', num_mazes+1, '...')
         while True:
-            obs_prob = (1 + prng.rand() * obs_max) / 2
+            obs_prob = (1.0 + prng.rand() * obs_max) / 2
             obstacles = []
             for state in range(np.prod(dimensions)):
                 if state == start or state == goal:
@@ -57,6 +59,7 @@ def create_envs(num_mazes, dim, prob, prng, obs_max=0.5):
             trainer = QTrainer(env, save=False)
             path_len, _ = trainer.compute_optimal_path(start)
             if path_len is not None:
+                env.graph.R *= 100
                 break
             else:
                 rejected += 1
@@ -115,12 +118,10 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     return new_Q
 
 
-def perform_exp(metric, dim, prob, num_mazes, seed, restore=False):
+def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, restore=False):
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
-    target_env, source_envs = create_envs(num_mazes, dim, prob, prng)
-
-    import pdb; pdb.set_trace()
+    target_env, source_envs = create_envs(num_mazes, dim, prob, prng, obs_max)
 
     num_iters = int(1e7)
     min_eps = 100
@@ -198,7 +199,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, restore=False):
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 10
+    n_trials = 50
     first_50_total = None
     # End trial early if reaching this many completed episodes...
     max_eps = 101
@@ -245,18 +246,27 @@ def perform_exp(metric, dim, prob, num_mazes, seed, restore=False):
     with open(f'{RESULTS_DIR}/{metric}_res.txt', 'w+') as f:
         f.write('[' + ', '.join(['%.5f' % x for x in first_50_avg]) + ']\n')
         f.write('[' + ', '.join([('%.5f' % x) for x in data['scores']]) + ']\n')
+        f.write(str(ARG_DICT) + '\n')
 
 
+# Larger reward test: dim 9, prob 1.0, num 8, obsmax 0.5 [R = 100, song only]
+# Prep for exp2: dim 9, prob 1.0, num 100, obsmax 0.5
+
+# Initial larger grid: dim 13, prob 1.0, num 16, obsmax 0.4
+# Experiment w/o annealing dim 9, prob 1.0, num 8, obsmax 0.5
+# Experiment sent on slack: dim 9, prob 1.0, num 8, obsmax 0.5 [annealing starts at 0.2 epsilon, decay 5.0/num_iters]
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     metric_choices = ['both', 'new', 'song']
     parser.add_argument('--metric', default=metric_choices[0], choices=metric_choices, help='Which metric to use.')
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
-    parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
-    parser.add_argument('--num', help='Number of source mazes to randomly generate', default=8)
+    parser.add_argument('--dim', help='Side length of mazes, for RNG', default=13)
+    parser.add_argument('--num', help='Number of source mazes to randomly generate', default=16)
     parser.add_argument('--prob', help='Transition probability', default=1)
     parser.add_argument('--restore', help='Restore or not', action='store_true')
-
+    parser.add_argument('--obsmax', help='Max obs probability, to be averaged with 1.0', default=0.5)
+    
+    # TODO: cache params passed in, save in output directory; pass in RESULTS_DIR rather than assuming
     args = parser.parse_args()
 
     seed = int(args.seed)
@@ -267,8 +277,11 @@ if __name__ == '__main__':
     prob = min(prob, 1)
     metric = args.metric
     restore = args.restore
+    obs_max = float(args.obsmax)
 
-    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, restore=restore)
+    ARG_DICT = vars(args)
+
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, restore=restore)
     if metric == 'both':
         bound('new')
         bound('song')

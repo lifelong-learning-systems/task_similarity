@@ -287,6 +287,7 @@ class QTrainer:
         q.append((grid_state, []))
         found = None
         visited = set()
+        # TODO: not actually finding the most optimal path...
         while len(q):
             cur_grid_state, cur_path = q.popleft()
             if cur_grid_state in visited:
