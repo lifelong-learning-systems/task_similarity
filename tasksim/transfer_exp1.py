@@ -20,7 +20,8 @@ RESULTS_DIR = 'results_transfer'
 ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'new_dist_normalize']
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
-TRANSFER_METHODS = ['weight', 'weight_action']
+# rand_sim 
+TRANSFER_METHODS = ['weight', 'weight_action', 'rand_sim']
 
 def init_algo(metric):
     if metric == 'new':
@@ -105,8 +106,14 @@ def test_env(target_env, new_Q, label, max_eps=None, restore=False):
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
     return trainer
 
-def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List, use_action=True):
+def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List, transfer_method='weight'):
     assert len(sim_mats), 'Sources must be non empty'
+
+    if transfer_method == 'weight_action':
+        use_action = True
+    else:
+        use_action = False
+    
     new_states = target_env.graph.P.shape[1]
     # TODO: don't assume 4 actions, but whatever
     n_actions = 4
@@ -117,6 +124,12 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     w_base = 1/N
     for source_env, sim_mat, source_Q, action_sim in zip(source_envs, sim_mats, source_Qs, action_sims):
         other_states, _ = source_Q.shape
+        # Randomize sim_mat
+        if transfer_method == 'rand_sim':
+            tmp = np.random.rand(*sim_mat.shape)
+            tmp = tmp / tmp.sum()
+            sim_mat = tmp
+
         assert sim_mat.shape == (other_states, new_states), 'Incorrects sim shape'
         column_sums = np.sum(sim_mat, axis=0)
         #action_sim_transpose = action_sim.T
@@ -144,10 +157,6 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
 
 def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, restore=False):
     init_algo(metric)
-    if transfer_method == 'weight':
-        use_action = False
-    else:
-        use_action = True
 
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
@@ -246,7 +255,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
                 action_sim = data['action_sims'][idx]
             else:
                 action_sim = None
-            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], use_action=use_action)
+            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], transfer_method=transfer_method)
             print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
             new_trainer = test_env(target_env, new_Q, label, max_eps=max_eps, restore=restore)
             print(f'\tDistance score: {score}')

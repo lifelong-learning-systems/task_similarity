@@ -33,18 +33,37 @@ if __name__ == '__main__':
 
     plt.clf()
 
+    reward = meta['reward']
+    dim = meta['dim']
+    transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
+
     baseline_dists, baseline_iters = results['Song']
     for metric, vals in results.items():
         dists, iters = vals
         idxs = np.arange(len(iters))
         speedup = baseline_iters/iters
-        plt.plot(idxs, speedup, label=metric)
+        #speedup = iters
+        plt.plot(idxs, speedup, marker='.', label=metric)
         print(f'Metric {metric}: avg speedup: {speedup.mean()}')
     plt.ylabel('Speedup')
     plt.xlabel('Source Index')
-    reward = meta['reward']
-    dim = meta['dim']
-    plt.title(f'Speedup over Song Baseline: Reward, {reward}  Dim: {dim}')
+    plt.title(f'Speedup over Song: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.legend()
+    plt.show()
+
+    plt.clf()
+
+    for metric, vals in results.items():
+        dists, iters = vals
+        idxs = np.arange(len(iters))
+        #speedup = iters
+        plt.plot(idxs, iters, marker='.', label=metric)
+        print(f'Metric {metric}: avg iter: {iters.mean()}')
+
+    plt.ylabel('Iterations')
+    plt.xlabel('Source Index')
+
+    plt.title(f'Avg. Iterations in 100 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
     plt.legend()
     plt.show()
 
