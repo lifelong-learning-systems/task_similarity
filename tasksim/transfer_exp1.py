@@ -78,7 +78,8 @@ def test_env(target_env, new_Q, label, max_eps=None, restore=False):
         restored = True
     
     num_iters = int(TEST_ITER)
-    trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.2, min_epsilon=0.1, decay=5.0/num_iters)
+    #trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.2, min_epsilon=0.1, decay=5.0/num_iters)
+    trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.1, min_epsilon=0.1, decay=0)
     trainer.Q = new_Q
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
     return trainer
@@ -119,44 +120,43 @@ def perform_exp(metric, dim, prob, num_mazes, seed, restore=False):
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
     target_env, source_envs = create_envs(num_mazes, dim, prob, prng)
 
+    import pdb; pdb.set_trace()
 
-    repeat = 1
     num_iters = int(1e7)
     min_eps = 100
     threshold = 0.9
     print('Training agents...')
-    for _ in range(repeat):
-        trainers = []
-        optimal = []
-        for i, env in enumerate(source_envs):
-            print(f'Training agent {i} / {len(source_envs)}...')
-            agent_path = f'{RESULTS_DIR}/source_{i}.json'
-            restored = False
-            if path.exists(agent_path) and not restore:
-                print(f'Deleting {agent_path} so as to not restore')
-                os.remove(agent_path)
-            elif path.exists(agent_path) and restore:
-                print(f'Restoring from {agent_path}')
-                restored = True
-            # TODO: Reduce decay if needed
-            trainer = QTrainer(env, agent_path, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
-            optimal_len, _ = trainer.compute_optimal_path(env.fixed_start)
-            if restored:
-                trainers.append(trainer)
-                optimal.append(optimal_len)
-                continue
-
-            trainer.run(num_iters=num_iters, episodic=False, early_stopping=True, threshold=threshold, record=True)
-            num_eps = len(trainer.steps)
-            if num_eps < min_eps:
-                print(f'Training failure, {num_eps} episodes completed. Continuing with more training...')
-                assert False
-            print(f'Final epsilon {trainer.epsilon}')
+    trainers = []
+    optimal = []
+    for i, env in enumerate(source_envs):
+        print(f'Training agent {i} / {len(source_envs)}...')
+        agent_path = f'{RESULTS_DIR}/source_{i}.json'
+        restored = False
+        if path.exists(agent_path) and not restore:
+            print(f'Deleting {agent_path} so as to not restore')
+            os.remove(agent_path)
+        elif path.exists(agent_path) and restore:
+            print(f'Restoring from {agent_path}')
+            restored = True
+        # TODO: Reduce decay if needed
+        trainer = QTrainer(env, agent_path, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
+        optimal_len, _ = trainer.compute_optimal_path(env.fixed_start)
+        if restored:
             trainers.append(trainer)
             optimal.append(optimal_len)
-        for idx, trainer in enumerate(trainers):
-            avg_steps = moving_average(trainer.steps, int(0.05*len(trainer.steps)))
-            print(f'agent {idx}, number of steps: {avg_steps[-1]}; optimal: {optimal[idx]}')
+            continue
+
+        trainer.run(num_iters=num_iters, episodic=False, early_stopping=True, threshold=threshold, record=True)
+        num_eps = len(trainer.steps)
+        if num_eps < min_eps:
+            print(f'Training failure, {num_eps} episodes completed. Continuing with more training...')
+            assert False
+        print(f'Final epsilon {trainer.epsilon}')
+        trainers.append(trainer)
+        optimal.append(optimal_len)
+    for idx, trainer in enumerate(trainers):
+        avg_steps = moving_average(trainer.steps, int(0.05*len(trainer.steps)))
+        print(f'agent {idx}, number of steps: {avg_steps[-1]}; optimal: {optimal[idx]}')
 
 
     data_path = f'{RESULTS_DIR}/{metric}_data.pkl'
@@ -198,7 +198,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, restore=False):
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 50
+    n_trials = 10
     first_50_total = None
     # End trial early if reaching this many completed episodes...
     max_eps = 101
