@@ -207,7 +207,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, restore=Fal
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 50
+    n_trials = 10
     first_50_total = None
     # End trial early if reaching this many completed episodes...
     max_eps = 101

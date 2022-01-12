@@ -27,12 +27,15 @@ STOP_ATOL = 1e-4
 STOP_RTOL = 1e-3
 
 DO_NORMALIZE_SCORE = True
+
 class RewardStrategy(Enum):
     NOOP = 1
     NORMALIZE_INDEPENDENT = 2
     NORMALIZE_TOGETHER = 3
 REWARD_STRATEGY = RewardStrategy.NORMALIZE_INDEPENDENT
 
+
+COMPUTE_DISTANCE = False
 
 # ----------------------- END PARAMS -------------------
 
@@ -91,6 +94,7 @@ def final_score(S, c_n=1.0, norm=True):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
+    S = S if COMPUTE_DISTANCE else 1 - S
     score = ot.emd2(a, b, S)
     if DO_NORMALIZE_SCORE:
         return score if not norm else normalize_score(score)
@@ -111,6 +115,7 @@ def sim_matrix(S):
     ns, nt = S.shape
     a = np.array([1/ns for _ in range(ns)])
     b = np.array([1/nt for _ in range(nt)])
+    S = S if COMPUTE_DISTANCE else 1 - S
     return ot.emd(a, b, S)
 
 
@@ -127,34 +132,6 @@ def truncate_score(score, num_decimal=3):
     return np.trunc(score * mul)/(mul)
 
 
-
-#@jit(nopython=True)
-#@jit()
-def compute_a_py(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters):
-    n_a1 = chunk.shape[0]
-    n_a2 = chunk.shape[1]
-    count = -1
-    entries = np.ones(n_a1*n_a2) * -1
-    
-    W = one_minus_S.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    for i in range(n_a1):
-        for j in range(n_a2):
-            count += 1
-            if (chunk[i, j][0] < 0) or (chunk[i, j][1] < 0):
-                entries[count] = -1
-                continue
-            alpha = int(chunk[i, j][0])
-            beta = int(chunk[i, j][1])
-            d_rwd = reward_diffs[alpha, beta]
-            x = actions1[alpha, :]
-            y = actions2[beta, :]
-            d_emd = emd_c(x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                          y.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                          W, len(x), len(y), int(emd_maxiters))
-            entry = 1 - (1 - c_a) * d_rwd - c_a * d_emd
-            entries[count] = entry
-    return entries
-
 def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_maxiters):
     n_chunk1 = chunk.shape[0]
     n_chunk2 = chunk.shape[1]
@@ -167,14 +144,16 @@ def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_max
                           to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(D_s),
                           to_ptr(entries),
                           np.float64(c_a), int(emd_maxiters))
-    return entries
+    return entries if COMPUTE_DISTANCE else 1 - entries
 
 
+# Returns the action-action distances, or similarities, taking in the state-state distances
 @ray.remote
 def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters, handle=pc.compute_chunk):
     return handle(chunk, reward_diffs, actions1, actions2, one_minus_S,
                             np.float64(c_a), np.float64(emd_maxiters))
 
+# Returns the state-to-state distances or similarities, taking in the action-action distances
 @ray.remote
 def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
     # one_minus_A is the action-action distances
@@ -194,18 +173,15 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s):
                 # obstacle-obstacle, goal-goal, obstacle-goal, goal-obstacle all have MAX similarity
                 # obstacle-normal, goal-normal all have MIN similarity
                 if not len(out_S1[u]) and not len(out_S2[v]):
-                    #entry = c_s
-                    entry = 0
+                    entry = 0 if COMPUTE_DISTANCE else c_s
                 else:
-                    #entry = 0
                     # Passing in doubles
-                    entry = c_s*np.finfo(np.float64).max
+                    entry = c_s*np.finfo(np.float64).max if COMPUTE_DISTANCE else 0
             else:
                 haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
                 haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
                 haus = max(haus1, haus2)
-                #entry = c_s * (1 - haus)
-                entry = c_s * haus
+                entry = c_s * (haus if COMPUTE_DISTANCE else (1 - haus))
             entries[count] = entry
     return entries
 
@@ -235,19 +211,6 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFA
                                        out_neighbors_S, out_neighbors_S,
                                        c_a=c_a, c_s=c_s, stop_rtol=stop_rtol, stop_atol=stop_atol, max_iters=max_iters,
                                        self_similarity=True)
-
-def norm(mat1, mat2, method):
-    mat1 = np.array(mat1)
-    mat2 = np.array(mat2)
-    combined = np.concatenate([mat1.flatten(), mat2.flatten()])
-    if method == 'l1' or method == 'l2':
-        combined = normalize([combined], norm=method)[0]
-    if method == 'minmax':
-        combined = minmax_scale(combined)
-    ret1 = combined[:mat1.size].reshape(mat1.shape)
-    ret2 = combined[mat1.size:].reshape(mat2.shape)
-    return ret1, ret2
-
 
 
 def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1, out_neighbors_S2,
@@ -447,7 +410,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         # TODO: some amount of parallelization
         # one_minus_S = 1 - S
         # one_minus_S_id = ray.put(one_minus_S)
-        D_s = S
+        D_s = S if COMPUTE_DISTANCE else 1 - S
         D_s_id = ray.put(D_s)
 
         bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, D_s_id,
@@ -468,8 +431,8 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         # AT THIS POINT, A is a distance matrix
         # each entry in A computed by (1 - c_a)*d_rwd - (1 - c_a)*d_emd
 
-        D_a = A
-        D_a_transpose = A.T
+        D_a = A if COMPUTE_DISTANCE else 1 - A
+        D_a_transpose = A.T if COMPUTE_DISTANCE else 1 - A.T
         D_a_id = ray.put(D_a)
         D_a_transpose_id = ray.put(D_a_transpose)
         bind_compute_s = lambda chunk: compute_s.remote(chunk, out_S1_id, out_S2_id,
