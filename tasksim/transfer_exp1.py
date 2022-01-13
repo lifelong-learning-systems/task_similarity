@@ -266,7 +266,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
     max_eps = 201
     measure_iters = 1e4
     for trial in range(n_trials):
-        print('TRANSFER TRIAL', trial, '/', n_trials)
+        print(f'{metric} TRANSFER TRIAL', trial, '/', n_trials)
         idx = 0
         optimal_percents = []
         transferred_trainers = []
@@ -278,24 +278,24 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
             else:
                 action_sim = None
             new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], metric, transfer_method=transfer_method)
-            print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
+            #print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
             new_trainer = test_env(target_env, new_Q, label, metric, max_eps=max_eps, restore=restore)
-            print(f'\tDistance score: {score}')
-            print(f'\tEpisodes completed: {len(new_trainer.steps)}')
+            #print(f'\tDistance score: {score}')
+            #print(f'\tEpisodes completed: {len(new_trainer.steps)}')
             num_eps = 20
             optimal_len = optimal[idx]
             if not len(new_trainer.steps):
                 percent_optimal = 0
-                print(f'\tLast {0} episode avg. steps: {np.inf}, percent of optimal: {percent_optimal}')
+                #print(f'\tLast {0} episode avg. steps: {np.inf}, percent of optimal: {percent_optimal}')
             elif len(new_trainer.steps) < 20:
                 percent_optimal = optimal_len / np.array(new_trainer.steps).mean()
-                print(f'\tLast {len(new_trainer.steps)} episode avg. steps: {np.array(new_trainer.steps).mean()}'\
-                    f', percent of optimal: {percent_optimal}')
+                #print(f'\tLast {len(new_trainer.steps)} episode avg. steps: {np.array(new_trainer.steps).mean()}'\
+                    #f', percent of optimal: {percent_optimal}')
             else:
                 avg_steps = moving_average(new_trainer.steps, 20)
                 percent_optimal = optimal_len / avg_steps[-1]
-                print(f'\tLast {num_eps} episode avg. steps: {avg_steps[-1]}'\
-                    f', percent of optimal: {percent_optimal}')
+                #print(f'\tLast {num_eps} episode avg. steps: {avg_steps[-1]}'\
+                    #f', percent of optimal: {percent_optimal}')
             optimal_percents.append(percent_optimal)
             transferred_trainers.append(new_trainer)
             idx += 1

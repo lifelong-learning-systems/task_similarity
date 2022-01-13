@@ -4,8 +4,6 @@ import glob
 import ast
 import argparse
 
-OUT='plot_out'
-
 def get_completed(steps, measure_iters, min=0):
     tmp = np.cumsum(steps) - min
     tmp = np.array(tmp)
@@ -44,11 +42,18 @@ def get_performance_curves(raw_steps, measure_iters, chunks=20):
         ret[metric] = completed
         total = None
         for idx, perf in completed.items():
+            # if total is None:
+            #     total = np.array(perf).copy()
+            # else:
+            #     total += np.array(perf).copy()
             if total is None:
-                total = np.array(perf).copy()
+                total = [[x] for x in perf]
             else:
-                total += np.array(perf).copy()
-        avgs[metric] = total / len(completed)
+                for x, stored in zip(perf, total):
+                    stored.append(x)
+        total = [np.array(stored) for stored in total]
+        avgs[metric] = [x.mean() for x in total]
+        #avgs[metric] = [np.median(x) for x in total]
     return ret, avgs
 
 if __name__ == '__main__':
@@ -56,6 +61,7 @@ if __name__ == '__main__':
     parser.add_argument('--results', help='Which directory to read from', default='final_results/dim9_reward100_num10_weight')
     args = parser.parse_args()
     RESULTS_DIR = args.results
+    OUT = RESULTS_DIR
 
 
     file_names = glob.glob(f'{RESULTS_DIR}/*.txt')
@@ -106,12 +112,13 @@ if __name__ == '__main__':
         plt.plot(x, y, marker='.', label=metric)
     plt.ylabel('Cumulative episodes')
     plt.xlabel('Total Iterations')
+    plt.ylim([0, 100])
     plt.title(f'Performance: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
     plt.legend()
     plt.savefig(f'{OUT}/performance.png', dpi=200)
 
     plt.clf()
-    baseline_dists, baseline_iters, baseline_eps = results['Song']
+    baseline_dists, baseline_iters, baseline_eps = results['Uniform']
     epsilon = 1e-6
     print()
     for metric, vals in results.items():
