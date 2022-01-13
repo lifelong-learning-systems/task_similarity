@@ -155,19 +155,27 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                 w_col = column_sums[target_state]
                 w = w_base*w_sim/w_col
 
+                if action_sim is None or not use_action:
+                    for target_action in range(n_actions):
+                        new_Q[target_state, target_action] += w*source_Q[source_state, target_action]
+                    continue
+
                 # TODO: figure out action-space correspondence first!
-                col_order = np.arange(n_actions)
-                if action_sim is not None and use_action:
-                    source_actions = source_env.graph.out_s[source_state]
-                    target_actions = target_env.graph.out_s[target_state]
-                    action_subset = action_sim[source_actions].T[target_actions].T
-                    action_mat = sim.sim_matrix(action_subset.copy())
-                    assert action_mat[action_mat != 0].size == n_actions, 'Unexpected number of entries'
-                    col_order = np.argmax(action_mat, axis=1)
+                source_actions = source_env.graph.out_s[source_state]
+                target_actions = target_env.graph.out_s[target_state]
+                action_subset = action_sim[source_actions].T[target_actions].T
+
+                action_subset_distances = sim.coallesce_sim(action_subset)
                 
+                least_distant_sources = np.min(action_subset_distances, axis=0)
+                least_distant_source_actions = np.argmin(action_subset_distances, axis=0)
                 for target_action in range(n_actions):
-                    new_Q[target_state, target_action] += w*source_Q[source_state, col_order[target_action]]
-                #new_Q[target_state, :] += w*source_Q[source_state, :]
+                    source_action = target_action
+                    least_distant_source = least_distant_sources[target_action]
+                    if action_subset_distances[target_action, target_action] != least_distant_source:
+                        source_action = least_distant_source_actions[target_action]
+                    new_Q[target_state, target_action] += w*source_Q[source_state, source_action]
+
     return new_Q
 
 

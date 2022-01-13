@@ -92,6 +92,9 @@ def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
     return (score - limit) / (1 - limit)
 
+def coallesce_sim(S):
+    return S if COMPUTE_DISTANCE else 1 - S
+
 def final_score(S, c_n=1.0, norm=True):
     if isinstance(S, tuple):
         S = S[0]
