@@ -307,12 +307,12 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
             first_50_total = first_50.copy()
             completed_total = completed_eps.copy()
             for idx, x in enumerate(transferred_trainers):
-                total_step[idx] = x.steps.copy()
+                total_step[idx] = np.array(x.steps).copy()
         else:
             first_50_total += first_50
             completed_total += completed_eps
             for idx, x in enumerate(transferred_trainers):
-                total_step[idx] += x.steps
+                total_step[idx] += np.array(x.steps)
     first_50_avg = first_50_total/n_trials
     completed_eps_avg = completed_total/n_trials
     with open(f'{RESULTS_DIR}/{metric}_res.txt', 'w+') as f:
