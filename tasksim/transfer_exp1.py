@@ -17,11 +17,13 @@ ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
 RESULTS_DIR = 'results_transfer'
 
-ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'new_dist_normalize']
+ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'uniform', 'empty']#, 'new_dist_normalize']
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
 # rand_sim 
-TRANSFER_METHODS = ['weight', 'weight_action', 'rand_sim']
+TRANSFER_METHODS = ['weight', 'weight_action']
+
+SCORE_METHODS = ['emd', 'haus']
 
 def init_algo(metric):
     if metric == 'new':
@@ -33,7 +35,7 @@ def init_algo(metric):
     elif metric == 'new_dist_normalize':
         sim.REWARD_STRATEGY = sim.RewardStrategy.NORMALIZE_INDEPENDENT
         sim.COMPUTE_DISTANCE = True
-    elif metric == 'song':
+    elif metric == 'song' or metric == 'uniform' or metric == 'rand' or metric == 'empty':
         # No special options 
         pass
 
@@ -90,7 +92,7 @@ def create_envs(num_mazes, dim, prob, prng, obs_max, reward=1):
     print('Rejected', rejected, 'grids.')
     return target_env, source_envs
 
-def test_env(target_env, new_Q, label, max_eps=None, restore=False):
+def test_env(target_env, new_Q, label, metric, max_eps=None, restore=False):
     agent_path = f'{RESULTS_DIR}/target_{label}.json'
     if path.exists(agent_path) and not restore:
         print(f'Deleting {agent_path} so as to not restore')
@@ -101,12 +103,15 @@ def test_env(target_env, new_Q, label, max_eps=None, restore=False):
     
     num_iters = int(TEST_ITER)
     #trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.2, min_epsilon=0.1, decay=5.0/num_iters)
-    trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.1, min_epsilon=0.1, decay=0)
+    if metric == 'empty':
+        trainer = QTrainer(target_env, save=False, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
+    else:
+        trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.1, min_epsilon=0.1, decay=0)
     trainer.Q = new_Q
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
     return trainer
 
-def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List, transfer_method='weight'):
+def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List, metric, transfer_method='weight'):
     assert len(sim_mats), 'Sources must be non empty'
 
     if transfer_method == 'weight_action':
@@ -119,14 +124,22 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     n_actions = 4
     action_dist = [1.0/n_actions for _ in range(n_actions)]
     new_Q = np.zeros((new_states, 4))
+    if metric == 'empty':
+        return new_Q
 
     N = len(sim_mats)
     w_base = 1/N
     for source_env, sim_mat, source_Q, action_sim in zip(source_envs, sim_mats, source_Qs, action_sims):
+
         other_states, _ = source_Q.shape
         # Randomize sim_mat
-        if transfer_method == 'rand_sim':
+        if metric == 'rand':
             tmp = np.random.rand(*sim_mat.shape)
+            tmp = tmp / tmp.sum()
+            sim_mat = tmp
+
+        if metric == 'uniform':
+            tmp = np.ones(sim_mat.shape)
             tmp = tmp / tmp.sum()
             sim_mat = tmp
 
@@ -155,7 +168,7 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     return new_Q
 
 
-def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, restore=False):
+def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, score_method, restore=False):
     init_algo(metric)
 
     prng = np.random.RandomState(seed)
@@ -212,20 +225,23 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
         dist_mats = []
         sim_mats = []
         action_sims = []
+        iters = []
         print('Caching sim/dist matrices...')
         for idx, env in enumerate(source_envs):
             print(f'Comparing MDP {idx} / {len(source_envs)}...')
             if metric in NEW_ALGOS:
-                D, A, _, _ = env.graph.compare(target_env.graph)
+                D, A, num_iters, _ = env.graph.compare(target_env.graph)
                 score = sim.final_score(D)
                 sim_mat = sim.sim_matrix(D)
             else:
-                D = env.graph.compare_song(target_env.graph)[0]
+                D, num_iters = env.graph.compare_song(target_env.graph)
                 A = None
                 score = sim.final_score_song(D)
                 sim_mat = sim.sim_matrix_song(D)
+            print(f'\tNum iters: {num_iters}, score: {score}')
             scores.append(score)
             dist_mats.append(D)
+            iters.append(num_iters)
             action_sims.append(A)
             sim_mats.append(sim_mat)
         data = {'scores': scores, 'dist_mats': dist_mats, 'sim_mats': sim_mats, 'action_sims': action_sims}
@@ -239,10 +255,14 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 10
+    n_trials = 10 
     first_50_total = None
+    completed_total = None
+    total_step = {}
     # End trial early if reaching this many completed episodes...
-    max_eps = 101
+    measure_eps = 50
+    max_eps = measure_eps + 1
+    measure_iters = 1e4
     for trial in range(n_trials):
         print('TRANSFER TRIAL', trial, '/', n_trials)
         idx = 0
@@ -255,9 +275,9 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
                 action_sim = data['action_sims'][idx]
             else:
                 action_sim = None
-            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], transfer_method=transfer_method)
+            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], metric, transfer_method=transfer_method)
             print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
-            new_trainer = test_env(target_env, new_Q, label, max_eps=max_eps, restore=restore)
+            new_trainer = test_env(target_env, new_Q, label, metric, max_eps=max_eps, restore=restore)
             print(f'\tDistance score: {score}')
             print(f'\tEpisodes completed: {len(new_trainer.steps)}')
             num_eps = 20
@@ -277,16 +297,34 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
             optimal_percents.append(percent_optimal)
             transferred_trainers.append(new_trainer)
             idx += 1
-        first_50 = np.array([np.array(x.steps[:100]).mean() for x in transferred_trainers])
+        
+        def get_completed(steps):
+            tmp = np.cumsum(steps)
+            return np.searchsorted(tmp, measure_iters)
+        completed_eps = np.array([get_completed(x.steps[:measure_eps]) for x in transferred_trainers])
+        first_50 = np.array([np.array(x.steps[:measure_eps]).mean() for x in transferred_trainers])
         if first_50_total is None:
             first_50_total = first_50.copy()
+            completed_total = completed_eps.copy()
+            for idx, x in enumerate(transferred_trainers):
+                total_step[idx] = x.steps.copy()
         else:
             first_50_total += first_50
+            completed_total += completed_eps
+            for idx, x in enumerate(transferred_trainers):
+                total_step[idx] += x.steps
     first_50_avg = first_50_total/n_trials
+    completed_eps_avg = completed_total/n_trials
     with open(f'{RESULTS_DIR}/{metric}_res.txt', 'w+') as f:
         f.write('[' + ', '.join(['%.5f' % x for x in first_50_avg]) + ']\n')
         f.write('[' + ', '.join([('%.5f' % x) for x in data['scores']]) + ']\n')
-        f.write(str(ARG_DICT) + '\n')
+        f.write('[' + ', '.join(['%.5f' % x for x in completed_eps_avg]) + ']\n')
+        f.write(f'{len(transferred_trainers)}\n')
+        for i in range(len(transferred_trainers)):
+            f.write('[' + ', '.join(['%.5f' % x for x in total_step[i]/n_trials]) + ']\n')
+        tmp = ARG_DICT.copy()
+        tmp['n_trials'] = n_trials
+        f.write(str(tmp) + '\n')
 
 
 # Larger reward test: dim 9, prob 1.0, num 8, obsmax 0.5 [R = 100, song only]
@@ -300,6 +338,7 @@ if __name__ == '__main__':
     parser.add_argument('--metric', default=ALGO_CHOICES[0], choices=ALGO_CHOICES, help='Which metric to use.')
     parser.add_argument('--results', help='Result directory', default='results_transfer')
     parser.add_argument('--transfer', help='Which transfer method to use', choices=TRANSFER_METHODS, default=TRANSFER_METHODS[0])
+    parser.add_argument('--score', help='Which scoring method to use', choices=SCORE_METHODS, default=SCORE_METHODS[0])
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=13)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=16)
@@ -323,11 +362,12 @@ if __name__ == '__main__':
     reward = float(args.reward)
     results = args.results
     transfer_method = args.transfer
+    score_method = args.score
     RESULTS_DIR = results
 
     ARG_DICT = vars(args)
 
-    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, restore=restore)
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, score_method, restore=restore)
     if metric == 'both':
         for metric in ALGO_CHOICES:
             if metric == 'both':

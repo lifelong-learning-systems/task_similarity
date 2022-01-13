@@ -4,6 +4,22 @@ import glob
 import ast
 import argparse
 
+OUT='plot_out'
+
+def get_completed(steps, measure_iters):
+    tmp = np.cumsum(steps)
+    return np.searchsorted(tmp, measure_iters)
+
+def get_all_completed(raw_steps, measure_iters):
+    ret = {}
+    for metric, data in raw_steps.items():
+        completed = []
+        for _, steps in data.items():
+            num_completed = get_completed(steps, measure_iters)
+            completed.append(num_completed)
+        ret[metric] = np.array(completed)
+    return ret
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -14,8 +30,10 @@ if __name__ == '__main__':
 
     file_names = glob.glob(f'{RESULTS_DIR}/*.txt')
     results = {}
+    raw_steps = {}
     meta = None
     for f in file_names:
+        key = f.split('_res.txt')[0].split('/')[-1].title()
         with open(f) as ptr:
             lines = ptr.readlines()
         
@@ -24,12 +42,25 @@ if __name__ == '__main__':
             line = line[1:-1]
             tokens = line.split(', ')
             return np.array([float(token) for token in tokens])
-        y = process_line(lines[0])
-        x = process_line(lines[1])
-        key = f.split('_res.txt')[0].split('/')[-1].title()
-        results[key] = (x, y)
+        iters_per_ep = process_line(lines[0])
+        dists = process_line(lines[1])
+        eps_in_1000 = process_line(lines[2])
+
+        num_source = int(lines[3])
+        raw_steps[key] = {}
+        for i in range(4, 4+num_source):
+            raw_steps[key][i-4] = process_line(lines[i])
+
+        if key == 'new_dist_normalize'.title():
+            continue
+        results[key] = (dists, iters_per_ep, eps_in_1000)
         if meta is None:
-            meta = ast.literal_eval(lines[2])
+            meta = ast.literal_eval(lines[-1])
+
+    all_completed = get_all_completed(raw_steps, 2500)
+    for key in raw_steps.keys():
+        dists, iters, eps = results[key]
+        results[key] = dists, iters, all_completed[key]
 
     plt.clf()
 
@@ -37,47 +68,88 @@ if __name__ == '__main__':
     dim = meta['dim']
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
-    baseline_dists, baseline_iters = results['Song']
+    baseline_dists, baseline_iters, baseline_eps = results['Song']
+    epsilon = 1e-6
+    print()
     for metric, vals in results.items():
-        dists, iters = vals
+        dists, iters, eps = vals
         idxs = np.arange(len(iters))
         speedup = baseline_iters/iters
         #speedup = iters
         plt.plot(idxs, speedup, marker='.', label=metric)
-        print(f'Metric {metric}: avg speedup: {speedup.mean()}')
+        print(f'Metric {metric}: avg iters speedup: {speedup.mean()}')
+        print(f'Metric {metric}: median iters speedup: {np.median(speedup)}')
     plt.ylabel('Speedup')
     plt.xlabel('Source Index')
-    plt.title(f'Speedup over Song: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.title(f'Iters vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
     plt.legend()
-    plt.show()
+    plt.savefig(f'{OUT}/speedup_iters.png', dpi=200)
+
+    plt.clf()
+    
+
+    print()
+    for metric, vals in results.items():
+        dists, iters, eps = vals
+        idxs = np.arange(len(iters))
+        speedup = eps/baseline_eps
+        #speedup = iters
+        plt.plot(idxs, speedup, marker='.', label=metric)
+        print(f'Metric {metric}: avg episodes speedup: {speedup.mean()}')
+        print(f'Metric {metric}: median episodes speedup: {np.median(speedup)}')
+    plt.ylabel('Speedup')
+    plt.xlabel('Source Index')
+    plt.title(f'Eps vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.legend()
+    plt.savefig(f'{OUT}/speedup_eps.png', dpi=200)
 
     plt.clf()
 
+    print()
     for metric, vals in results.items():
-        dists, iters = vals
+        dists, iters, eps = vals
         idxs = np.arange(len(iters))
         #speedup = iters
         plt.plot(idxs, iters, marker='.', label=metric)
         print(f'Metric {metric}: avg iter: {iters.mean()}')
+        print(f'Metric {metric}: median iter: {np.median(iters)}')
 
     plt.ylabel('Iterations')
     plt.xlabel('Source Index')
 
-    plt.title(f'Avg. Iterations in 100 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.title(f'Avg. Iterations in 50 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
     plt.legend()
-    plt.show()
+    plt.savefig(f'{OUT}/raw_iters.png', dpi=200)
+
+    plt.clf()
+
+    print()
+    for metric, vals in results.items():
+        dists, iters, eps = vals
+        idxs = np.arange(len(iters))
+        #speedup = iters
+        plt.plot(idxs, eps, marker='.', label=metric)
+        print(f'Metric {metric}: avg eps: {iters.mean()}')
+        print(f'Metric {metric}: median eps: {np.median(iters)}')
+
+    plt.ylabel('Iterations')
+    plt.xlabel('Source Index')
+
+    plt.title(f'Avg. Episodes in 10,000 Iterations: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.legend()
+    plt.savefig(f'{OUT}/raw_eps.png', dpi=200)
 
 
-
+    print()
     fig, axs = plt.subplots(1, len(results))
     for ax, data in zip(axs, results.items()):
         metric, vals = data
-        dists, iters = vals
+        dists, iters, eps = vals
         R = np.corrcoef(dists, iters)[0, 1]
         print(f'Metric {metric}: R = {R}')
         ax.set_title(metric)
         ax.scatter(dists, iters, label=('R = %.2f' % R))
         ax.legend()
 
-    fig.tight_layout()
-    plt.show()
+    #fig.tight_layout()
+    #plt.savefig(f'{OUT}/correlation_iters.png')

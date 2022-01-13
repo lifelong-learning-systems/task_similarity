@@ -21,10 +21,14 @@ import sys
 # ----------------------- PARAMETERS ------------------
 
 DEFAULT_CA = 0.5
-DEFAULT_CS = 0.995
+DEFAULT_CS = 0.9995
 
-STOP_ATOL = 1e-4
-STOP_RTOL = 1e-3
+# Use in np.allclose for convergene
+# abs(a[i] - b[i]) <= rtol * abs(b[i]) + atol
+STOP_RTOL = 1e-5
+STOP_ATOL = 1e-8
+
+MAX_ITERS = 15
 
 DO_NORMALIZE_SCORE = False
 
@@ -295,12 +299,15 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                 #val = d_prime[s_i, s_j]
                 #print(val)
         
+        #delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
+        # if delta < stop_tol:
+        #     break
         if np.allclose(d_prime, d, rtol=STOP_RTOL, atol=STOP_ATOL):
             break
-        #delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
         from copy import deepcopy
         d = deepcopy(d_prime)
-    return d, num_iters
+    # num_iters - 1, since returning d bfeore d_prime is copied
+    return d, num_iters - 1
 cross_structural_similarity_song.WARNED = False
 
 # TODO: Change InitStrategy to be ONES? Would need to re-run experiments...
@@ -460,7 +467,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         iter += 1
 
     # Return distances
-    return S, A, iter - 1, done  # return done to report that it converged (or didn't)
+    return S, A, iter, done  # return done to report that it converged (or didn't)
 
 
 if __name__ == "__main__":
