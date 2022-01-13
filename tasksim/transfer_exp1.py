@@ -255,13 +255,13 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
     
     # Now, do the actual weight transfer
     # TODO: measure performance, average many results lol
-    n_trials = 10 
+    n_trials = 50
     first_50_total = None
     completed_total = None
     total_step = {}
     # End trial early if reaching this many completed episodes...
     measure_eps = 50
-    max_eps = measure_eps + 1
+    max_eps = 201
     measure_iters = 1e4
     for trial in range(n_trials):
         print('TRANSFER TRIAL', trial, '/', n_trials)

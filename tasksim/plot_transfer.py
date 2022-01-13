@@ -6,8 +6,10 @@ import argparse
 
 OUT='plot_out'
 
-def get_completed(steps, measure_iters):
-    tmp = np.cumsum(steps)
+def get_completed(steps, measure_iters, min=0):
+    tmp = np.cumsum(steps) - min
+    tmp = np.array(tmp)
+    tmp = tmp[tmp >= 0]
     return np.searchsorted(tmp, measure_iters)
 
 def get_all_completed(raw_steps, measure_iters):
@@ -20,6 +22,33 @@ def get_all_completed(raw_steps, measure_iters):
         ret[metric] = np.array(completed)
     return ret
 
+def get_performance_curves(raw_steps, measure_iters, chunks=20):
+
+    boundaries = np.linspace(0, measure_iters, chunks)
+
+    ret = {}
+    avgs = {}
+    for metric, data in raw_steps.items():
+        completed = {}
+        # for each source env
+        for idx, steps in data.items():
+            performance = []
+            for boundary_idx, boundary in enumerate(boundaries):
+                if boundary_idx == 0:
+                    continue
+                prev_completed = get_completed(steps, boundaries[boundary_idx-1])
+                num_completed = get_completed(steps, boundary)
+                performance.append(num_completed - prev_completed)
+            completed[idx] = performance
+        ret[metric] = completed
+        total = None
+        for idx, perf in completed.items():
+            if total is None:
+                total = np.array(perf).copy()
+            else:
+                total += np.array(perf).copy()
+        avgs[metric] = total / len(completed)
+    return ret, avgs
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -57,17 +86,30 @@ if __name__ == '__main__':
         if meta is None:
             meta = ast.literal_eval(lines[-1])
 
-    all_completed = get_all_completed(raw_steps, 2500)
+    reward = meta['reward']
+    dim = meta['dim']
+    transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
+
+    all_completed = get_all_completed(raw_steps, 1500)
     for key in raw_steps.keys():
         dists, iters, eps = results[key]
         results[key] = dists, iters, all_completed[key]
 
     plt.clf()
+    PERF_ITER = 2500
+    CHUNKS = 20
+    _, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, CHUNKS)
+    for metric, avg_perf in avg_perfs.items():
+        x = np.linspace(0, PERF_ITER, CHUNKS - 1)
+        y = avg_perf
+        plt.plot(x, y, marker='.', label=metric)
+    plt.ylabel('Cumulative episodes')
+    plt.xlabel('Total Iterations')
+    plt.title(f'Performance: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.legend()
+    plt.savefig(f'{OUT}/performance.png', dpi=200)
 
-    reward = meta['reward']
-    dim = meta['dim']
-    transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
-
+    plt.clf()
     baseline_dists, baseline_iters, baseline_eps = results['Song']
     epsilon = 1e-6
     print()
