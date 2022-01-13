@@ -44,7 +44,7 @@ def init_algo(metric):
 
 # Hyper parameters for qtrainer
 GAMMA = 0.1
-TEST_ITER = int(1e5)
+TEST_ITER = int(1e6)
 
 
 # From https://stackoverflow.com/a/54628145
@@ -278,7 +278,6 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
             else:
                 action_sim = None
             new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], metric, transfer_method=transfer_method)
-            #print(f'Testing transfer source {idx} via metric {metric} to target for {TEST_ITER} steps...')
             new_trainer = test_env(target_env, new_Q, label, metric, max_eps=max_eps, restore=restore)
             #print(f'\tDistance score: {score}')
             #print(f'\tEpisodes completed: {len(new_trainer.steps)}')

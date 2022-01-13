@@ -4,6 +4,8 @@ import glob
 import ast
 import argparse
 
+
+
 def get_completed(steps, measure_iters, min=0):
     tmp = np.cumsum(steps) - min
     tmp = np.array(tmp)
@@ -95,6 +97,7 @@ if __name__ == '__main__':
 
     reward = meta['reward']
     dim = meta['dim']
+    Y_HEIGHT = 100
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
     all_completed = get_all_completed(raw_steps, 1500)
@@ -103,17 +106,21 @@ if __name__ == '__main__':
         results[key] = dists, iters, all_completed[key]
 
     plt.clf()
-    PERF_ITER = 2500
+    PERF_ITER = 2500 if dim == 9 else 5000
     CHUNKS = 20
-    _, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, CHUNKS)
+    all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, CHUNKS)
+    N_SOURCES = None
+    for _, all_perf in all_perfs.items():
+        N_SOURCES = len(all_perf)
+        break
     for metric, avg_perf in avg_perfs.items():
         x = np.linspace(0, PERF_ITER, CHUNKS - 1)
         y = avg_perf
         plt.plot(x, y, marker='.', label=metric)
     plt.ylabel('Cumulative episodes')
     plt.xlabel('Total Iterations')
-    plt.ylim([0, 100])
-    plt.title(f'Performance: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.ylim([0, Y_HEIGHT])
+    plt.title(f'Performance: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
     plt.savefig(f'{OUT}/performance.png', dpi=200)
 
@@ -131,7 +138,7 @@ if __name__ == '__main__':
         print(f'Metric {metric}: median iters speedup: {np.median(speedup)}')
     plt.ylabel('Speedup')
     plt.xlabel('Source Index')
-    plt.title(f'Iters vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.title(f'Iters vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
     plt.savefig(f'{OUT}/speedup_iters.png', dpi=200)
 
@@ -149,7 +156,7 @@ if __name__ == '__main__':
         print(f'Metric {metric}: median episodes speedup: {np.median(speedup)}')
     plt.ylabel('Speedup')
     plt.xlabel('Source Index')
-    plt.title(f'Eps vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.title(f'Eps vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
     plt.savefig(f'{OUT}/speedup_eps.png', dpi=200)
 
@@ -167,7 +174,7 @@ if __name__ == '__main__':
     plt.ylabel('Iterations')
     plt.xlabel('Source Index')
 
-    plt.title(f'Avg. Iterations in 50 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.title(f'Avg. Iterations in 50 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
     plt.savefig(f'{OUT}/raw_iters.png', dpi=200)
 
@@ -185,7 +192,7 @@ if __name__ == '__main__':
     plt.ylabel('Iterations')
     plt.xlabel('Source Index')
 
-    plt.title(f'Avg. Episodes in 10,000 Iterations: {transfer_method} transfer w/ Reward {reward}, Dim {dim}')
+    plt.title(f'Avg. Episodes in 10,000 Iterations: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
     plt.savefig(f'{OUT}/raw_eps.png', dpi=200)
 
