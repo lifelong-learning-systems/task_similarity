@@ -38,7 +38,8 @@ def get_performance_curves(raw_steps, measure_iters, chunks=20):
                     continue
                 prev_completed = get_completed(steps, boundaries[boundary_idx-1])
                 num_completed = get_completed(steps, boundary)
-                performance.append(num_completed - prev_completed)
+                #performance.append(num_completed - prev_completed)
+                performance.append(num_completed)
             completed[idx] = performance
         ret[metric] = completed
         total = None

@@ -219,7 +219,8 @@ class QTrainer:
             obs = self.env.reset()
             done = False
             step = 0
-            for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
+            #for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
+            for _ in steps:
                 obs, reward, done, _ = self.step()
                 self.total_rewards += reward
                 step += 1

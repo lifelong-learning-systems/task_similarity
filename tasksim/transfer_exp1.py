@@ -1,5 +1,8 @@
 import os
+import sys
+import shlex
 from typing import List
+import subprocess
 
 from numpy.lib.utils import source
 import tasksim
@@ -254,8 +257,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
     
     
     # Now, do the actual weight transfer
-    # TODO: measure performance, average many results lol
-    n_trials = 50
+    n_trials = 50 if metric != 'empty' else 5
     first_50_total = None
     completed_total = None
     total_step = {}
@@ -369,10 +371,22 @@ if __name__ == '__main__':
 
     bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, score_method, restore=restore)
     if metric == 'both':
+        waiting = []
         for metric in ALGO_CHOICES:
             if metric == 'both':
                 continue
-            bound(metric)
+            #bound(metric)
+            launch_str = ' '.join([str(x) for x in sys.argv])
+            metric_str = '--metric both'
+            if metric_str in launch_str:
+                launch_str = launch_str.replace(metric_str, '')
+            launch_str = launch_str + f' --metric {metric}'
+            cmd = f'python {launch_str}'
+            cmds = shlex.split(cmd)
+            p = subprocess.Popen(cmds, start_new_session=True)
+            waiting.append(p)
+        for p in waiting:
+            p.wait()
     else:
         bound(metric)
     
