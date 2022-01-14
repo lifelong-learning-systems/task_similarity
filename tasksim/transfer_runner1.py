@@ -9,10 +9,7 @@ from tasksim.transfer_exp1 import *
 
 BASE_DIR = None
 
-def setup_dirs(dim, reward, num, agents='agent_bases'):
-    agent_sources = glob.glob(f'{agents}/dim{int(dim)}_reward{int(reward)}/*.json')
-    agent_sources.sort(key=lambda x: int(x.split('source_')[-1].split('.')[0]))
-
+def setup_dirs(dim, reward, num, rotate, agents='agent_bases'):
     def dir_exists(path):
         return os.path.exists(path) and os.path.isdir(path)
 
@@ -28,7 +25,8 @@ def setup_dirs(dim, reward, num, agents='agent_bases'):
     for method in TRANSFER_METHODS:
         sub_dir = f'{BASE_DIR}/dim{int(dim)}_reward{int(reward)}_num{num}_{method}'
         os.makedirs(sub_dir)
-        source_dir = f'{agents}/dim{int(dim)}_reward{int(reward)}'
+        rot_str = 'rot_' if rotate else ''
+        source_dir = f'{agents}/{rot_str}dim{int(dim)}_reward{int(reward)}'
         for i in range(num):
             agent = f'source_{i}.json'
             shutil.copy(f'{source_dir}/{agent}', f'{sub_dir}/{agent}')
@@ -42,6 +40,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Base for result directories', default='runner_results')
     #parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
+    parser.add_argument('--rotate', help='If true, randomly orient the start/goal locations', action='store_true')
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=10)
     #parser.add_argument('--prob', help='Transition probability', default=1)
@@ -61,11 +60,12 @@ if __name__ == '__main__':
     #restore = args.restore
     reward = float(args.reward)
     results = args.results
+    rotate = args.rotate
     BASE_DIR = results
 
     arg_dict = vars(args)
 
-    sub_dirs = setup_dirs(dim, reward, num_mazes)
+    sub_dirs = setup_dirs(dim, reward, num_mazes, rotate)
     waiting = []
     for method, out_dir in sub_dirs.items():
         cmd = f'python transfer_exp1.py --restore --results {out_dir}' \

@@ -6,10 +6,11 @@ import argparse
 import tasksim
 import tasksim.structural_similarity as sim
 import pickle
+import ot
 
 N_CHUNKS = 100
 DIFF = False
-USE_HAUS = True
+USE_HAUS = False
 
 
 def get_completed(steps, measure_iters, min=0):
@@ -67,14 +68,8 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
         #avgs[metric] = [np.median(x) for x in total]
     return ret, avgs
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--results', help='Which directory to read from', default='final_results/dim9_reward100_num10_weight')
-    args = parser.parse_args()
-    RESULTS_DIR = args.results
-    OUT = RESULTS_DIR
 
-
+def process():
     file_names = glob.glob(f'{RESULTS_DIR}/*.txt')
     results = {}
     raw_steps = {}
@@ -88,7 +83,7 @@ if __name__ == '__main__':
             data = pickle.load(ptr)
         # make into distance
         haus_scores = []
-        for D in data['dist_mats']:
+        for idx, D in enumerate(data['dist_mats']):
             if key == 'New':
                 D = sim.coallesce_sim(D)
             elif key == 'Uniform':
@@ -96,7 +91,20 @@ if __name__ == '__main__':
             ns, nt = D.shape
             states1 = np.arange(ns)
             states2 = np.arange(nt)
+            #haus_def = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
             haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
+            #sinkhorn = ot.sinkhorn2(states1, states2, D, 1, method='sinkhorn')[0]
+            #dist_score = sim.final_score_song(D)
+            #sus_score = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
+
+            # if key == 'New':
+            #     import pdb; pdb.set_trace()
+            # if 'New' in key:
+            #     A = data['action_sims'][idx]
+            #     if key == 'New':
+            #         D_A = sim.coallesce_sim(A)
+            #     else:
+            #         D_A = A
             haus_scores.append(haus)
         
         def process_line(line):
@@ -125,6 +133,7 @@ if __name__ == '__main__':
 
     reward = meta['reward']
     dim = meta['dim']
+    rotate = meta['rotate'] if 'rotate' in meta else False
     Y_HEIGHT = 150 if dim == '9' else 50
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
@@ -211,73 +220,17 @@ if __name__ == '__main__':
     plt.savefig(f'{OUT}/correlation_iters.png')
 
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--results', help='Which directory to read from', default='final_results/dim9_reward100_num10_weight')
+    parser.add_argument('--parent', help='Which nested result dir to read from', default=None)
+    args = parser.parse_args()
+    parent_dir = args.parent
+    if parent_dir is None:
+        RESULTS_DIR = args.results
+        OUT = RESULTS_DIR
+        process()
+    else:
+        sub_dirs = glob.glob(f'{parent_dir}/*')
+        import pdb; pdb.set_trace()
 
-
-    # print()
-    # for metric, vals in results.items():
-    #     dists, iters, eps = vals
-    #     idxs = np.arange(len(iters))
-    #     speedup = baseline_iters/iters
-    #     #speedup = iters
-    #     plt.plot(idxs, speedup, marker='.', label=metric)
-    #     print(f'Metric {metric}: avg iters speedup: {speedup.mean()}')
-    #     print(f'Metric {metric}: median iters speedup: {np.median(speedup)}')
-    # plt.ylabel('Speedup')
-    # plt.xlabel('Source Index')
-    # plt.title(f'Iters vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    # plt.legend()
-    # plt.savefig(f'{OUT}/speedup_iters.png', dpi=200)
-
-    # plt.clf()
-    
-
-    # print()
-    # for metric, vals in results.items():
-    #     dists, iters, eps = vals
-    #     idxs = np.arange(len(iters))
-    #     speedup = eps/baseline_eps
-    #     #speedup = iters
-    #     plt.plot(idxs, speedup, marker='.', label=metric)
-    #     print(f'Metric {metric}: avg episodes speedup: {speedup.mean()}')
-    #     print(f'Metric {metric}: median episodes speedup: {np.median(speedup)}')
-    # plt.ylabel('Speedup')
-    # plt.xlabel('Source Index')
-    # plt.title(f'Eps vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    # plt.legend()
-    # plt.savefig(f'{OUT}/speedup_eps.png', dpi=200)
-
-    # plt.clf()
-
-    # print()
-    # for metric, vals in results.items():
-    #     dists, iters, eps = vals
-    #     idxs = np.arange(len(iters))
-    #     #speedup = iters
-    #     plt.plot(idxs, iters, marker='.', label=metric)
-    #     print(f'Metric {metric}: avg iter: {iters.mean()}')
-    #     print(f'Metric {metric}: median iter: {np.median(iters)}')
-
-    # plt.ylabel('Iterations')
-    # plt.xlabel('Source Index')
-
-    # plt.title(f'Avg. Iterations in 50 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    # plt.legend()
-    # plt.savefig(f'{OUT}/raw_iters.png', dpi=200)
-
-    # plt.clf()
-
-    # print()
-    # for metric, vals in results.items():
-    #     dists, iters, eps = vals
-    #     idxs = np.arange(len(iters))
-    #     #speedup = iters
-    #     plt.plot(idxs, eps, marker='.', label=metric)
-    #     print(f'Metric {metric}: avg eps: {iters.mean()}')
-    #     print(f'Metric {metric}: median eps: {np.median(iters)}')
-
-    # plt.ylabel('Iterations')
-    # plt.xlabel('Source Index')
-
-    # plt.title(f'Avg. Episodes in 10,000 Iterations: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    # plt.legend()
-    # plt.savefig(f'{OUT}/raw_eps.png', dpi=200)

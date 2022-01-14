@@ -54,13 +54,16 @@ TEST_ITER = int(1e6)
 def moving_average(x, w):
     return np.convolve(x, np.ones(w), 'valid') / w
 
-def create_envs(num_mazes, dim, prob, prng, obs_max, reward=1):
+def create_envs(rotate, num_mazes, dim, prob, prng, obs_max, reward=1):
     dimensions = (dim, dim)
-    # Always upper left to bottom right
-    start = 0
-    goal = np.prod(dimensions) - 1
     target_env = None
     source_envs = []
+
+    upper_left = 0
+    upper_right = dim - 1
+    lower_right = np.prod(dimensions) - 1
+    lower_left = dim*(dim - 1)
+
     # Generate 1 more, since it'll be the target env
     # Then, generate 10x the amount, and select the top `num_mazes` (in terms of distance) to be compared to?
     print('Computing grids...')
@@ -68,6 +71,24 @@ def create_envs(num_mazes, dim, prob, prng, obs_max, reward=1):
     for i in range(num_mazes + 1):
         print(i, '/', num_mazes+1, '...')
         while True:
+            # Always upper left to bottom right
+            if rotate:
+                orient = prng.rand()
+                if orient < 0.25:
+                    start = upper_left
+                    goal = lower_right
+                elif orient < 0.5:
+                    start = upper_right
+                    goal = lower_left
+                elif orient < 0.75:
+                    start = lower_right
+                    goal = upper_left
+                else:
+                    start = lower_left
+                    goal = upper_right
+            else:
+                start = 0
+                goal = np.prod(dimensions) - 1
             obs_prob = (1.0 + prng.rand() * obs_max) / 2
             obstacles = []
             for state in range(np.prod(dimensions)):
@@ -202,12 +223,12 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     return new_Q
 
 
-def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, score_method, restore=False):
+def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, transfer_method, score_method, restore=False):
     init_algo(metric)
 
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
-    target_env, source_envs = create_envs(num_mazes, dim, prob, prng, obs_max, reward)
+    target_env, source_envs = create_envs(rotate, num_mazes, dim, prob, prng, obs_max, reward)
 
     num_iters = int(1e7)
     min_eps = 100
@@ -372,6 +393,7 @@ if __name__ == '__main__':
     parser.add_argument('--transfer', help='Which transfer method to use', choices=TRANSFER_METHODS, default=TRANSFER_METHODS[0])
     parser.add_argument('--score', help='Which scoring method to use', choices=SCORE_METHODS, default=SCORE_METHODS[0])
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
+    parser.add_argument('--rotate', help='If true, randomly orient the start/goal locations', action='store_true')
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=13)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=16)
     parser.add_argument('--prob', help='Transition probability', default=1)
@@ -390,6 +412,7 @@ if __name__ == '__main__':
     prob = min(prob, 1)
     metric = args.metric
     restore = args.restore
+    rotate = args.rotate
     obs_max = float(args.obsmax)
     reward = float(args.reward)
     results = args.results
@@ -399,7 +422,7 @@ if __name__ == '__main__':
 
     ARG_DICT = vars(args)
 
-    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_method, score_method, restore=restore)
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, transfer_method, score_method, restore=restore)
     if metric == 'both':
         waiting = []
         for metric in ALGO_CHOICES:
