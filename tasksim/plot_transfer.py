@@ -4,6 +4,8 @@ import glob
 import ast
 import argparse
 
+N_CHUNKS = 100
+DIFF = False
 
 
 def get_completed(steps, measure_iters, min=0):
@@ -22,7 +24,7 @@ def get_all_completed(raw_steps, measure_iters):
         ret[metric] = np.array(completed)
     return ret
 
-def get_performance_curves(raw_steps, measure_iters, chunks=20):
+def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
 
     boundaries = np.linspace(0, measure_iters, chunks)
 
@@ -35,11 +37,14 @@ def get_performance_curves(raw_steps, measure_iters, chunks=20):
             performance = []
             for boundary_idx, boundary in enumerate(boundaries):
                 if boundary_idx == 0:
+                    performance.append(0)
                     continue
                 prev_completed = get_completed(steps, boundaries[boundary_idx-1])
                 num_completed = get_completed(steps, boundary)
-                #performance.append(num_completed - prev_completed)
-                performance.append(num_completed)
+                if DIFF:
+                    performance.append(num_completed - prev_completed)
+                else:
+                    performance.append(num_completed)
             completed[idx] = performance
         ret[metric] = completed
         total = None
@@ -107,14 +112,16 @@ if __name__ == '__main__':
 
     plt.clf()
     PERF_ITER = 2500
-    CHUNKS = 20
-    all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, CHUNKS)
+
+    DIFF = False    
+    Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
+    all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
     N_SOURCES = None
     for _, all_perf in all_perfs.items():
         N_SOURCES = len(all_perf)
         break
     for metric, avg_perf in avg_perfs.items():
-        x = np.linspace(0, PERF_ITER, CHUNKS - 1)
+        x = np.linspace(0, PERF_ITER, N_CHUNKS)
         y = avg_perf
         plt.plot(x, y, marker='.', label=metric)
     plt.ylabel('Cumulative episodes')
@@ -123,6 +130,26 @@ if __name__ == '__main__':
     plt.title(f'Performance: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
     plt.savefig(f'{OUT}/performance.png', dpi=200)
+
+    plt.clf()
+
+    DIFF = True
+    Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
+    all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
+    N_SOURCES = None
+    for _, all_perf in all_perfs.items():
+        N_SOURCES = len(all_perf)
+        break
+    for metric, avg_perf in avg_perfs.items():
+        x = np.linspace(0, PERF_ITER, N_CHUNKS)
+        y = avg_perf
+        plt.plot(x, y, marker='.', label=metric)
+    plt.ylabel('Delta Episodes')
+    plt.xlabel('Total Iterations')
+    plt.ylim([0, Y_HEIGHT])
+    plt.title(f'Performance Gradient: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
+    plt.legend()
+    plt.savefig(f'{OUT}/performance_grad.png', dpi=200)
 
     plt.clf()
     baseline_dists, baseline_iters, baseline_eps = results['Uniform']

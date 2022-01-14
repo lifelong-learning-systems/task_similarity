@@ -24,7 +24,7 @@ ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'uniform']#, 'empty']#, 'new_
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
 # rand_sim 
-TRANSFER_METHODS = ['weight', 'weight_action']
+TRANSFER_METHODS = ['weight', 'weight_action', 'weight_dist', 'weight_dist_action', 'state', 'state_action']
 
 SCORE_METHODS = ['emd', 'haus']
 
