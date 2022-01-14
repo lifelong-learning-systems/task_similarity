@@ -3,9 +3,13 @@ from matplotlib import pyplot as plt
 import glob
 import ast
 import argparse
+import tasksim
+import tasksim.structural_similarity as sim
 
 N_CHUNKS = 100
 DIFF = False
+USE_HAUS = True
+import pickle
 
 
 def get_completed(steps, measure_iters, min=0):
@@ -79,6 +83,21 @@ if __name__ == '__main__':
         key = f.split('_res.txt')[0].split('/')[-1].title()
         with open(f) as ptr:
             lines = ptr.readlines()
+        data_file = f.replace('res.txt', 'data.pkl')
+        with open(data_file, 'rb') as ptr:
+            data = pickle.load(ptr)
+        # make into distance
+        haus_scores = []
+        for D in data['dist_mats']:
+            if key == 'New':
+                D = sim.coallesce_sim(D)
+            elif key == 'Uniform':
+                D = np.ones(D.shape) / np.ones(D.shape).size
+            ns, nt = D.shape
+            states1 = np.arange(ns)
+            states2 = np.arange(nt)
+            haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
+            haus_scores.append(haus)
         
         def process_line(line):
             line = line.rstrip()
@@ -86,8 +105,12 @@ if __name__ == '__main__':
             tokens = line.split(', ')
             return np.array([float(token) for token in tokens])
         iters_per_ep = process_line(lines[0])
+        haus_scores = np.array(haus_scores)
         dists = process_line(lines[1])
+        if USE_HAUS:
+            dists = haus_scores
         eps_in_1000 = process_line(lines[2])
+
 
         num_source = int(lines[3])
         raw_steps[key] = {}
@@ -235,5 +258,7 @@ if __name__ == '__main__':
         ax.scatter(dists, iters, label=('R = %.2f' % R))
         ax.legend()
 
-    #fig.tight_layout()
-    #plt.savefig(f'{OUT}/correlation_iters.png')
+    figure = plt.gcf()
+    figure.set_size_inches(8*len(results), 6)
+    fig.tight_layout()
+    plt.savefig(f'{OUT}/correlation_iters.png')
