@@ -23,8 +23,11 @@ RESULTS_DIR = 'results_transfer'
 ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'uniform']#, 'empty']#, 'new_dist_normalize']
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
-# rand_sim 
-TRANSFER_METHODS = ['weight', 'weight_action', 'weight_dist', 'weight_dist_action', 'state', 'state_action']
+# These don't work:
+# 'rand_sim'
+#'weight_dist', 'weight_dist_action'
+TRANSFER_METHODS = ['weight', 'weight_action', 
+                    'state', 'state_action']
 
 SCORE_METHODS = ['emd', 'haus']
 
@@ -115,10 +118,11 @@ def test_env(target_env, new_Q, label, metric, max_eps=None, restore=False):
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
     return trainer
 
-def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, source_Qs: List, action_sims: List, metric, transfer_method='weight'):
+def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, dist_mats: List, source_Qs: List, \
+                    action_sims: List, metric, transfer_method='weight'):
     assert len(sim_mats), 'Sources must be non empty'
 
-    if transfer_method == 'weight_action':
+    if 'action' in transfer_method:
         use_action = True
     else:
         use_action = False
@@ -133,8 +137,13 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
 
     N = len(sim_mats)
     w_base = 1/N
-    for source_env, sim_mat, source_Q, action_sim in zip(source_envs, sim_mats, source_Qs, action_sims):
-
+    for source_env, sim_mat, dist_mat, source_Q, action_sim in zip(source_envs, sim_mats, dist_mats, source_Qs, action_sims):
+        assert (sim_mat == sim.sim_matrix_song(dist_mat)).all() if metric not in NEW_ALGOS else \
+               (sim_mat == sim.sim_matrix(dist_mat)).all(), 'Sim & dist mismatch'
+        # Setup s.t. sim_mat is distances
+        if 'state' in transfer_method:
+            # Want to do state transfer:
+            sim_mat = dist_mat if metric not in NEW_ALGOS else sim.coallesce_sim(dist_mat)
         other_states, _ = source_Q.shape
         # Randomize sim_mat
         if metric == 'rand':
@@ -142,10 +151,23 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
             tmp = tmp / tmp.sum()
             sim_mat = tmp
 
+        # TODO: better baseline? Maybe just copy as much of the source_Q as you can, leaving mismatched ones zero?
+        # Uniform init
         if metric == 'uniform':
             tmp = np.ones(sim_mat.shape)
             tmp = tmp / tmp.sum()
             sim_mat = tmp
+
+        # Now, make sim_mat have one entry per column, at the lowest distance
+        if 'state' in transfer_method:
+            tmp = np.zeros(sim_mat.shape)
+            # Manually verified: for uniform, it's all 0, for song, it's mostly 0, some 2, and then last one is 98
+            # new/new_dist actually look correct
+            min_dist_sources = np.argmin(sim_mat, axis=0)
+            for target_state in range(new_states):
+                tmp[min_dist_sources[target_state], target_state] = 1
+            sim_mat = tmp
+
 
         assert sim_mat.shape == (other_states, new_states), 'Incorrects sim shape'
         column_sums = np.sum(sim_mat, axis=0)
@@ -279,14 +301,14 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
         idx = 0
         optimal_percents = []
         transferred_trainers = []
-        for sim_mat, score, trainer in zip(data['sim_mats'], data['scores'], trainers):
+        for sim_mat, dist_mat, score, trainer in zip(data['sim_mats'], data['dist_mats'], data['scores'], trainers):
             source_Q = trainer.Q
             label = f'{metric}_{idx}'
             if metric in NEW_ALGOS:
                 action_sim = data['action_sims'][idx]
             else:
                 action_sim = None
-            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [source_Q], [action_sim], metric, transfer_method=transfer_method)
+            new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [dist_mat], [source_Q], [action_sim], metric, transfer_method=transfer_method)
             new_trainer = test_env(target_env, new_Q, label, metric, max_eps=max_eps, restore=restore)
             #print(f'\tDistance score: {score}')
             #print(f'\tEpisodes completed: {len(new_trainer.steps)}')

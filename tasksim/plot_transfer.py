@@ -9,7 +9,7 @@ import pickle
 
 N_CHUNKS = 100
 DIFF = False
-USE_HAUS = False
+USE_HAUS = True
 
 
 def get_completed(steps, measure_iters, min=0):
@@ -140,13 +140,16 @@ if __name__ == '__main__':
     Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
     all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
     N_SOURCES = None
+    n_sources_list = []
     reached_eps = {}
     for metric, all_perf in all_perfs.items():
         N_SOURCES = len(all_perf)
+        n_sources_list.append(N_SOURCES)
         last_cnt = np.zeros(N_SOURCES)
         for idx, perf in all_perf.items():
             last_cnt[idx] = perf[-1]
         reached_eps[metric] = last_cnt
+    assert np.unique(np.array(n_sources_list)).size == 1, 'Mismatch of number of sources used!'
     for metric, avg_perf in avg_perfs.items():
         x = np.linspace(0, PERF_ITER, N_CHUNKS)
         y = avg_perf
@@ -197,6 +200,8 @@ if __name__ == '__main__':
         R = np.corrcoef(dists, reached_ep)[0, 1]
         print(f'Metric {metric}: R = {R}')
         ax.set_title(metric)
+        ax.set_xlabel('Distance')
+        ax.set_ylabel('Performance (# of Episodes)')
         ax.scatter(dists, reached_ep, label=('R = %.2f' % R))
         ax.legend()
 
