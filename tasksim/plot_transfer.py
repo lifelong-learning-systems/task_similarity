@@ -97,7 +97,7 @@ if __name__ == '__main__':
 
     reward = meta['reward']
     dim = meta['dim']
-    Y_HEIGHT = 100
+    Y_HEIGHT = 150 if dim == '9' else 50
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
     all_completed = get_all_completed(raw_steps, 1500)
@@ -106,7 +106,7 @@ if __name__ == '__main__':
         results[key] = dists, iters, all_completed[key]
 
     plt.clf()
-    PERF_ITER = 2500 if dim == 9 else 5000
+    PERF_ITER = 2500
     CHUNKS = 20
     all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, CHUNKS)
     N_SOURCES = None

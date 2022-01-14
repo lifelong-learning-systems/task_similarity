@@ -109,6 +109,7 @@ def test_env(target_env, new_Q, label, metric, max_eps=None, restore=False):
     if metric == 'empty':
         trainer = QTrainer(target_env, save=False, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
     else:
+        # TODO: change this? To like 0.01 maybe?
         trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.1, min_epsilon=0.1, decay=0)
     trainer.Q = new_Q
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
@@ -265,7 +266,7 @@ def perform_exp(metric, dim, prob, num_mazes, seed, obs_max, reward, transfer_me
     
     
     # Now, do the actual weight transfer
-    n_trials = 50 if metric != 'empty' else 5
+    n_trials = 5 if metric == 'empty' else (35 if metric == 'uniform' else 50)
     first_50_total = None
     completed_total = None
     total_step = {}
