@@ -5,11 +5,11 @@ import ast
 import argparse
 import tasksim
 import tasksim.structural_similarity as sim
+import pickle
 
 N_CHUNKS = 100
 DIFF = False
-USE_HAUS = True
-import pickle
+USE_HAUS = False
 
 
 def get_completed(steps, measure_iters, min=0):
@@ -140,9 +140,13 @@ if __name__ == '__main__':
     Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
     all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
     N_SOURCES = None
-    for _, all_perf in all_perfs.items():
+    reached_eps = {}
+    for metric, all_perf in all_perfs.items():
         N_SOURCES = len(all_perf)
-        break
+        last_cnt = np.zeros(N_SOURCES)
+        for idx, perf in all_perf.items():
+            last_cnt[idx] = perf[-1]
+        reached_eps[metric] = last_cnt
     for metric, avg_perf in avg_perfs.items():
         x = np.linspace(0, PERF_ITER, N_CHUNKS)
         y = avg_perf
@@ -177,74 +181,6 @@ if __name__ == '__main__':
     plt.clf()
     baseline_dists, baseline_iters, baseline_eps = results['Uniform']
     epsilon = 1e-6
-    print()
-    for metric, vals in results.items():
-        dists, iters, eps = vals
-        idxs = np.arange(len(iters))
-        speedup = baseline_iters/iters
-        #speedup = iters
-        plt.plot(idxs, speedup, marker='.', label=metric)
-        print(f'Metric {metric}: avg iters speedup: {speedup.mean()}')
-        print(f'Metric {metric}: median iters speedup: {np.median(speedup)}')
-    plt.ylabel('Speedup')
-    plt.xlabel('Source Index')
-    plt.title(f'Iters vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    plt.legend()
-    plt.savefig(f'{OUT}/speedup_iters.png', dpi=200)
-
-    plt.clf()
-    
-
-    print()
-    for metric, vals in results.items():
-        dists, iters, eps = vals
-        idxs = np.arange(len(iters))
-        speedup = eps/baseline_eps
-        #speedup = iters
-        plt.plot(idxs, speedup, marker='.', label=metric)
-        print(f'Metric {metric}: avg episodes speedup: {speedup.mean()}')
-        print(f'Metric {metric}: median episodes speedup: {np.median(speedup)}')
-    plt.ylabel('Speedup')
-    plt.xlabel('Source Index')
-    plt.title(f'Eps vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    plt.legend()
-    plt.savefig(f'{OUT}/speedup_eps.png', dpi=200)
-
-    plt.clf()
-
-    print()
-    for metric, vals in results.items():
-        dists, iters, eps = vals
-        idxs = np.arange(len(iters))
-        #speedup = iters
-        plt.plot(idxs, iters, marker='.', label=metric)
-        print(f'Metric {metric}: avg iter: {iters.mean()}')
-        print(f'Metric {metric}: median iter: {np.median(iters)}')
-
-    plt.ylabel('Iterations')
-    plt.xlabel('Source Index')
-
-    plt.title(f'Avg. Iterations in 50 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    plt.legend()
-    plt.savefig(f'{OUT}/raw_iters.png', dpi=200)
-
-    plt.clf()
-
-    print()
-    for metric, vals in results.items():
-        dists, iters, eps = vals
-        idxs = np.arange(len(iters))
-        #speedup = iters
-        plt.plot(idxs, eps, marker='.', label=metric)
-        print(f'Metric {metric}: avg eps: {iters.mean()}')
-        print(f'Metric {metric}: median eps: {np.median(iters)}')
-
-    plt.ylabel('Iterations')
-    plt.xlabel('Source Index')
-
-    plt.title(f'Avg. Episodes in 10,000 Iterations: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    plt.legend()
-    plt.savefig(f'{OUT}/raw_eps.png', dpi=200)
 
 
     print()
@@ -252,13 +188,91 @@ if __name__ == '__main__':
     for ax, data in zip(axs, results.items()):
         metric, vals = data
         dists, iters, eps = vals
-        R = np.corrcoef(dists, iters)[0, 1]
+        reached_ep = reached_eps[metric]
+        # R = np.corrcoef(dists, iters)[0, 1]
+        # print(f'Metric {metric}: R = {R}')
+        # ax.set_title(metric)
+        # ax.scatter(dists, iters, label=('R = %.2f' % R))
+        # ax.legend()
+        R = np.corrcoef(dists, reached_ep)[0, 1]
         print(f'Metric {metric}: R = {R}')
         ax.set_title(metric)
-        ax.scatter(dists, iters, label=('R = %.2f' % R))
+        ax.scatter(dists, reached_ep, label=('R = %.2f' % R))
         ax.legend()
 
     figure = plt.gcf()
     figure.set_size_inches(8*len(results), 6)
     fig.tight_layout()
     plt.savefig(f'{OUT}/correlation_iters.png')
+
+
+
+
+    # print()
+    # for metric, vals in results.items():
+    #     dists, iters, eps = vals
+    #     idxs = np.arange(len(iters))
+    #     speedup = baseline_iters/iters
+    #     #speedup = iters
+    #     plt.plot(idxs, speedup, marker='.', label=metric)
+    #     print(f'Metric {metric}: avg iters speedup: {speedup.mean()}')
+    #     print(f'Metric {metric}: median iters speedup: {np.median(speedup)}')
+    # plt.ylabel('Speedup')
+    # plt.xlabel('Source Index')
+    # plt.title(f'Iters vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
+    # plt.legend()
+    # plt.savefig(f'{OUT}/speedup_iters.png', dpi=200)
+
+    # plt.clf()
+    
+
+    # print()
+    # for metric, vals in results.items():
+    #     dists, iters, eps = vals
+    #     idxs = np.arange(len(iters))
+    #     speedup = eps/baseline_eps
+    #     #speedup = iters
+    #     plt.plot(idxs, speedup, marker='.', label=metric)
+    #     print(f'Metric {metric}: avg episodes speedup: {speedup.mean()}')
+    #     print(f'Metric {metric}: median episodes speedup: {np.median(speedup)}')
+    # plt.ylabel('Speedup')
+    # plt.xlabel('Source Index')
+    # plt.title(f'Eps vs. Song Speedup: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
+    # plt.legend()
+    # plt.savefig(f'{OUT}/speedup_eps.png', dpi=200)
+
+    # plt.clf()
+
+    # print()
+    # for metric, vals in results.items():
+    #     dists, iters, eps = vals
+    #     idxs = np.arange(len(iters))
+    #     #speedup = iters
+    #     plt.plot(idxs, iters, marker='.', label=metric)
+    #     print(f'Metric {metric}: avg iter: {iters.mean()}')
+    #     print(f'Metric {metric}: median iter: {np.median(iters)}')
+
+    # plt.ylabel('Iterations')
+    # plt.xlabel('Source Index')
+
+    # plt.title(f'Avg. Iterations in 50 Episodes: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
+    # plt.legend()
+    # plt.savefig(f'{OUT}/raw_iters.png', dpi=200)
+
+    # plt.clf()
+
+    # print()
+    # for metric, vals in results.items():
+    #     dists, iters, eps = vals
+    #     idxs = np.arange(len(iters))
+    #     #speedup = iters
+    #     plt.plot(idxs, eps, marker='.', label=metric)
+    #     print(f'Metric {metric}: avg eps: {iters.mean()}')
+    #     print(f'Metric {metric}: median eps: {np.median(iters)}')
+
+    # plt.ylabel('Iterations')
+    # plt.xlabel('Source Index')
+
+    # plt.title(f'Avg. Episodes in 10,000 Iterations: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
+    # plt.legend()
+    # plt.savefig(f'{OUT}/raw_eps.png', dpi=200)
