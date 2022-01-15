@@ -20,7 +20,7 @@ ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
 RESULTS_DIR = 'results_transfer'
 
-ALGO_CHOICES = ['both', 'new', 'song', 'new_dist', 'uniform']#, 'empty']#, 'new_dist_normalize']
+ALGO_CHOICES = ['both', 'new', 'song', 'uniform']#, 'new_dist', 'empty']#, 'new_dist_normalize']
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
 # These don't work:
@@ -309,7 +309,7 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
     
     
     # Now, do the actual weight transfer
-    n_trials = 5 if metric == 'empty' else 50
+    n_trials = 5 if metric == 'empty' else 10
     first_50_total = None
     completed_total = None
     total_step = {}

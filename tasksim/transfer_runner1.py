@@ -68,7 +68,8 @@ if __name__ == '__main__':
     sub_dirs = setup_dirs(dim, reward, num_mazes, rotate)
     waiting = []
     for method, out_dir in sub_dirs.items():
-        cmd = f'python transfer_exp1.py --restore --results {out_dir}' \
+        rot_str = ' --rotate' if rotate else ''
+        cmd = f'python transfer_exp1.py --restore {rot_str} --results {out_dir}' \
               f' --dim {dim} --reward {reward} --num {num_mazes}' \
               f' --metric both --transfer {method}'
         print(cmd)

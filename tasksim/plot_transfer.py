@@ -7,8 +7,10 @@ import tasksim
 import tasksim.structural_similarity as sim
 import pickle
 import ot
+import sys
 
-N_CHUNKS = 100
+N_CHUNKS = 50
+PERF_ITER = 2500
 DIFF = False
 USE_HAUS = False
 
@@ -110,8 +112,10 @@ def process():
         def process_line(line):
             line = line.rstrip()
             line = line[1:-1]
-            tokens = line.split(', ')
-            return np.array([float(token) for token in tokens])
+            if ',' in line:
+                tokens = line.split(', ')
+                return np.array([float(token) for token in tokens])
+            return np.array([])
         iters_per_ep = process_line(lines[0])
         haus_scores = np.array(haus_scores)
         dists = process_line(lines[1])
@@ -134,6 +138,7 @@ def process():
     reward = meta['reward']
     dim = meta['dim']
     rotate = meta['rotate'] if 'rotate' in meta else False
+    meta['rotate'] = rotate
     Y_HEIGHT = 150 if dim == '9' else 50
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
@@ -143,7 +148,6 @@ def process():
         results[key] = dists, iters, all_completed[key]
 
     plt.clf()
-    PERF_ITER = 2500
 
     DIFF = False    
     Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
@@ -159,6 +163,7 @@ def process():
             last_cnt[idx] = perf[-1]
         reached_eps[metric] = last_cnt
     assert np.unique(np.array(n_sources_list)).size == 1, 'Mismatch of number of sources used!'
+    meta['n_sources'] = N_SOURCES
     for metric, avg_perf in avg_perfs.items():
         x = np.linspace(0, PERF_ITER, N_CHUNKS)
         y = avg_perf
@@ -195,32 +200,34 @@ def process():
     epsilon = 1e-6
 
 
-    print()
-    fig, axs = plt.subplots(1, len(results))
-    for ax, data in zip(axs, results.items()):
-        metric, vals = data
-        dists, iters, eps = vals
-        reached_ep = reached_eps[metric]
-        # R = np.corrcoef(dists, iters)[0, 1]
-        # print(f'Metric {metric}: R = {R}')
-        # ax.set_title(metric)
-        # ax.scatter(dists, iters, label=('R = %.2f' % R))
-        # ax.legend()
-        R = np.corrcoef(dists, reached_ep)[0, 1]
-        print(f'Metric {metric}: R = {R}')
-        ax.set_title(metric)
-        ax.set_xlabel('Distance')
-        ax.set_ylabel('Performance (# of Episodes)')
-        ax.scatter(dists, reached_ep, label=('R = %.2f' % R))
-        ax.legend()
+    # print()
+    # fig, axs = plt.subplots(2, 2)
+    # for ax, data in zip(axs, results.items()):
+    #     metric, vals = data
+    #     dists, iters, eps = vals
+    #     reached_ep = reached_eps[metric]
+    #     # R = np.corrcoef(dists, iters)[0, 1]
+    #     # print(f'Metric {metric}: R = {R}')
+    #     # ax.set_title(metric)
+    #     # ax.scatter(dists, iters, label=('R = %.2f' % R))
+    #     # ax.legend()
+    #     R = np.corrcoef(dists, reached_ep)[0, 1]
+    #     print(f'Metric {metric}: R = {R}')
+    #     ax.set_title(metric)
+    #     ax.set_xlabel('Distance')
+    #     ax.set_ylabel('Performance (# of Episodes)')
+    #     ax.scatter(dists, reached_ep, label=('R = %.2f' % R))
+    #     ax.legend()
 
-    figure = plt.gcf()
-    figure.set_size_inches(8*len(results), 6)
-    fig.tight_layout()
-    plt.savefig(f'{OUT}/correlation_iters.png')
+    # fig.tight_layout()
+    # plt.savefig(f'{OUT}/correlation_iters.png')
+
+    return avg_perfs, meta
 
 
 if __name__ == '__main__':
+    global RESULTS_DIR
+    global OUT
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Which directory to read from', default='final_results/dim9_reward100_num10_weight')
     parser.add_argument('--parent', help='Which nested result dir to read from', default=None)
@@ -230,7 +237,45 @@ if __name__ == '__main__':
         RESULTS_DIR = args.results
         OUT = RESULTS_DIR
         process()
-    else:
-        sub_dirs = glob.glob(f'{parent_dir}/*')
-        import pdb; pdb.set_trace()
+        sys.exit(0)
+
+    sub_dirs = glob.glob(f'{parent_dir}/dim*')
+    full_results = {'weight': {}, 'state': {}}
+    for dir in sub_dirs:
+        RESULTS_DIR = dir
+        OUT = dir
+        avg_perfs, meta = process()
+        transfer = meta['transfer']
+        dim = meta['dim']
+        reward = meta['reward']
+        rotate = meta['rotate']
+        N_SOURCES = meta['n_sources']
+        main_key = 'weight' if 'weight' in transfer else 'state'
+        if 'action' not in transfer:
+            full_results[main_key]['Song'] = avg_perfs['Song']
+            full_results[main_key]['Uniform'] = avg_perfs['Uniform']
+            full_results[main_key]['New'] = avg_perfs['New']
+        else:
+            full_results[main_key]['New_Action'] = avg_perfs['New']
+
+    OUT = parent_dir
+    Y_HEIGHT = 150 if int(dim) == 9 else 50
+    rot_str = ' + Rotations' if rotate else ''
+    for main_key, avg_perfs in full_results.items():
+        plt.clf()
+        metrics = [metric for metric in avg_perfs.keys()]
+        metrics.sort()
+        for metric in metrics:
+            avg_perf = avg_perfs[metric]
+            x = np.linspace(0, PERF_ITER, N_CHUNKS)
+            y = avg_perf
+            plt.plot(x, y, marker='.', label=metric)
+        plt.ylabel('Cumulative episodes')
+        plt.xlabel('Total Iterations')
+        plt.ylim([0, Y_HEIGHT])
+        plt.title(f'Performance: {main_key.title()} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}{rot_str}')
+        plt.legend()
+        plt.savefig(f'{OUT}/{main_key}_performance.png', dpi=200)
+
+    plt.clf()
 
