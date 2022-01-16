@@ -20,6 +20,11 @@ ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
 RESULTS_DIR = 'results_transfer'
 
+# Hyper parameters for qtrainer
+GAMMA = 0.1
+TEST_ITER = int(1e7)
+
+
 ALGO_CHOICES = ['both', 'new', 'song', 'uniform']#, 'new_dist', 'empty']#, 'new_dist_normalize']
 NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
 
@@ -44,10 +49,6 @@ def init_algo(metric):
     elif metric == 'song' or metric == 'uniform' or metric == 'rand' or metric == 'empty':
         # No special options 
         pass
-
-# Hyper parameters for qtrainer
-GAMMA = 0.1
-TEST_ITER = int(1e6)
 
 
 # From https://stackoverflow.com/a/54628145
@@ -309,12 +310,12 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
     
     
     # Now, do the actual weight transfer
-    n_trials = 5 if metric == 'empty' else 10
+    n_trials = 5 if metric == 'empty' else 50
     first_50_total = None
     completed_total = None
     total_step = {}
     # End trial early if reaching this many completed episodes...
-    measure_eps = 50
+    measure_eps = 10
     max_eps = 201
     measure_iters = 1e4
     for trial in range(n_trials):
@@ -365,6 +366,9 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
             first_50_total += first_50
             completed_total += completed_eps
             for idx, x in enumerate(transferred_trainers):
+                cur_total = total_step[idx]
+                next_addition = np.array(x.steps)
+                assert cur_total.shape == next_addition.shape, 'Error, mismatch in completed episodes between trials'
                 total_step[idx] += np.array(x.steps)
     first_50_avg = first_50_total/n_trials
     completed_eps_avg = completed_total/n_trials

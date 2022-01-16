@@ -9,8 +9,9 @@ import pickle
 import ot
 import sys
 
-N_CHUNKS = 50
+N_CHUNKS = 40
 PERF_ITER = 2500
+DPI = 300
 DIFF = False
 USE_HAUS = False
 
@@ -139,7 +140,8 @@ def process():
     dim = meta['dim']
     rotate = meta['rotate'] if 'rotate' in meta else False
     meta['rotate'] = rotate
-    Y_HEIGHT = 150 if dim == '9' else 50
+    #Y_HEIGHT = 150 if dim == '9' else 50
+    Y_HEIGHT = 150
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
     all_completed = get_all_completed(raw_steps, 1500)
@@ -173,7 +175,7 @@ def process():
     plt.ylim([0, Y_HEIGHT])
     plt.title(f'Performance: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
-    plt.savefig(f'{OUT}/performance.png', dpi=200)
+    plt.savefig(f'{OUT}/performance.png', dpi=DPI)
 
     plt.clf()
 
@@ -193,7 +195,7 @@ def process():
     plt.ylim([0, Y_HEIGHT])
     plt.title(f'Performance Gradient: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
     plt.legend()
-    plt.savefig(f'{OUT}/performance_grad.png', dpi=200)
+    plt.savefig(f'{OUT}/performance_grad.png', dpi=DPI)
 
     plt.clf()
     baseline_dists, baseline_iters, baseline_eps = results['Uniform']
@@ -259,7 +261,7 @@ if __name__ == '__main__':
             full_results[main_key]['New_Action'] = avg_perfs['New']
 
     OUT = parent_dir
-    Y_HEIGHT = 150 if int(dim) == 9 else 50
+    Y_HEIGHT = 150
     rot_str = ' + Rotations' if rotate else ''
     for main_key, avg_perfs in full_results.items():
         plt.clf()
@@ -269,13 +271,17 @@ if __name__ == '__main__':
             avg_perf = avg_perfs[metric]
             x = np.linspace(0, PERF_ITER, N_CHUNKS)
             y = avg_perf
+            # if metric == 'Uniform':
+            #     plt.plot(x, y, linestyle=':', label=metric)
+            # else:
+            #     plt.plot(x, y, marker='.', label=metric)
             plt.plot(x, y, marker='.', label=metric)
         plt.ylabel('Cumulative episodes')
         plt.xlabel('Total Iterations')
         plt.ylim([0, Y_HEIGHT])
         plt.title(f'Performance: {main_key.title()} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}{rot_str}')
         plt.legend()
-        plt.savefig(f'{OUT}/{main_key}_performance.png', dpi=200)
+        plt.savefig(f'{OUT}/{main_key}_performance.png', dpi=DPI)
 
     plt.clf()
 
