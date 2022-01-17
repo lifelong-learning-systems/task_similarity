@@ -34,8 +34,7 @@ def setup_dirs(exist_ok=False):
             for reward in REWARDS:
                 rot_dir_str = 'rot_' if rot else ''
                 rot_com_str = ' --rotate' if rot else ''
-                sub_dir = f'{NESTED_DIR}/{rot_dir_str}dim{int(dim)}_reward{int(reward)}'
-                os.makedirs(sub_dir, exist_ok=exist_ok)
+                sub_dir = f'{NESTED_DIR}/{rot_dir_str}dim{int(dim)}_reward{int(reward)}_num{int(N)}'
                 cmd = base_cmd % (sub_dir, dim, rot_com_str, reward)
                 commands.append(cmd)
                 plot_cmd = plot_base_cmd % sub_dir
