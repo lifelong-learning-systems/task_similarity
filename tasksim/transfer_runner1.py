@@ -33,6 +33,8 @@ def setup_dirs(dim, reward, num, rotate, agents='agent_bases'):
         for algo in filtered_algos:
             data = f'{algo}_data.pkl'
             shutil.copy(f'{source_dir}/{data}', f'{sub_dir}/{data}')
+        all_envs = 'all_envs.dill'
+        shutil.copy(f'{source_dir}/{all_envs}', f'{sub_dir}/{all_envs}')
         sub_dirs[method] = sub_dir
     return sub_dirs
 
