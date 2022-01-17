@@ -13,7 +13,7 @@ N_CHUNKS = 40
 PERF_ITER = 2500
 DPI = 300
 DIFF = False
-USE_HAUS = False
+USE_HAUS = True
 
 
 def get_completed(steps, measure_iters, min=0):
@@ -26,8 +26,8 @@ def get_all_completed(raw_steps, measure_iters):
     ret = {}
     for metric, data in raw_steps.items():
         completed = []
-        for _, steps in data.items():
-            num_completed = get_completed(steps, measure_iters)
+        for _, steps_list in data.items():
+            num_completed = np.mean([get_completed(steps, measure_iters) for steps in steps_list])
             completed.append(num_completed)
         ret[metric] = np.array(completed)
     return ret
@@ -41,14 +41,14 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
     for metric, data in raw_steps.items():
         completed = {}
         # for each source env
-        for idx, steps in data.items():
+        for idx, steps_list in data.items():
             performance = []
             for boundary_idx, boundary in enumerate(boundaries):
                 if boundary_idx == 0:
                     performance.append(0)
                     continue
-                prev_completed = get_completed(steps, boundaries[boundary_idx-1])
-                num_completed = get_completed(steps, boundary)
+                prev_completed = np.mean([get_completed(steps, boundaries[boundary_idx-1]) for steps in steps_list])
+                num_completed = np.mean([get_completed(steps, boundary) for steps in steps_list])
                 if DIFF:
                     performance.append(num_completed - prev_completed)
                 else:
@@ -77,6 +77,7 @@ def process():
     results = {}
     raw_steps = {}
     meta = None
+    COMPUTE_SCORES = False
     for f in file_names:
         key = f.split('_res.txt')[0].split('/')[-1].title()
         with open(f) as ptr:
@@ -85,7 +86,7 @@ def process():
         with open(data_file, 'rb') as ptr:
             data = pickle.load(ptr)
         # make into distance
-        haus_scores = []
+        scores = []
         for idx, D in enumerate(data['dist_mats']):
             if key == 'New':
                 D = sim.coallesce_sim(D)
@@ -95,20 +96,15 @@ def process():
             states1 = np.arange(ns)
             states2 = np.arange(nt)
             #haus_def = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
-            haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
-            #sinkhorn = ot.sinkhorn2(states1, states2, D, 1, method='sinkhorn')[0]
-            #dist_score = sim.final_score_song(D)
-            #sus_score = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
+            if USE_HAUS:
+                haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
+                scores.append(haus)
+            else:
+                dist_score = sim.final_score_song(D)
+                scores.append(dist_score)
 
-            # if key == 'New':
-            #     import pdb; pdb.set_trace()
-            # if 'New' in key:
-            #     A = data['action_sims'][idx]
-            #     if key == 'New':
-            #         D_A = sim.coallesce_sim(A)
-            #     else:
-            #         D_A = A
-            haus_scores.append(haus)
+            #sinkhorn = ot.sinkhorn2(states1, states2, D, 1, method='sinkhorn')[0]
+            #sus_score = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
         
         def process_line(line):
             line = line.rstrip()
@@ -117,22 +113,24 @@ def process():
                 tokens = line.split(', ')
                 return np.array([float(token) for token in tokens])
             return np.array([])
-        iters_per_ep = process_line(lines[0])
-        haus_scores = np.array(haus_scores)
-        dists = process_line(lines[1])
-        if USE_HAUS:
-            dists = haus_scores
-        eps_in_1000 = process_line(lines[2])
+        #iters_per_ep = process_line(lines[0])
+        scores = np.array(scores)
+        #dists = process_line(lines[1])
+        dists = scores
+        #eps_in_1000 = process_line(lines[2])
 
 
-        num_source = int(lines[3])
+        tokens = lines[0].split(' ')
+        num_source, n_trials = int(tokens[0]), int(tokens[1])
         raw_steps[key] = {}
-        for i in range(4, 4+num_source):
-            raw_steps[key][i-4] = process_line(lines[i])
+        for i in range(num_source):
+            raw_steps[key][i] = []
+            for k in range(n_trials):
+                raw_steps[key][i].append(process_line(lines[1 + i*n_trials + k]))
 
         if key == 'new_dist_normalize'.title():
             continue
-        results[key] = (dists, iters_per_ep, eps_in_1000)
+        results[key] = (dists, None, None)
         if meta is None:
             meta = ast.literal_eval(lines[-1])
 
@@ -198,8 +196,8 @@ def process():
     plt.savefig(f'{OUT}/performance_grad.png', dpi=DPI)
 
     plt.clf()
-    baseline_dists, baseline_iters, baseline_eps = results['Uniform']
-    epsilon = 1e-6
+    # baseline_dists, baseline_iters, baseline_eps = results['Uniform']
+    # epsilon = 1e-6
 
 
     # print()

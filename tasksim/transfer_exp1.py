@@ -13,8 +13,11 @@ import argparse
 import numpy as np
 import ot
 import pickle
+import dill
 
 from tasksim.qtrainer import *
+
+OUT_VERSION = 2
 
 ARG_DICT = None
 STRAT = gen.ActionStrategy.NOOP_EFFECT_COMPRESS
@@ -22,7 +25,7 @@ RESULTS_DIR = 'results_transfer'
 
 # Hyper parameters for qtrainer
 GAMMA = 0.1
-TEST_ITER = int(1e7)
+TEST_ITER = int(1e4)
 
 
 ALGO_CHOICES = ['both', 'new', 'song', 'uniform']#, 'new_dist', 'empty']#, 'new_dist_normalize']
@@ -224,12 +227,30 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
     return new_Q
 
 
-def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, transfer_method, score_method, restore=False):
+def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, transfer_method, score_method, restore=False, notransfer=False):
     init_algo(metric)
 
     prng = np.random.RandomState(seed)
     print(f'called with {metric}, {dim}, {prob}, {num_mazes}, {seed}')
-    target_env, source_envs = create_envs(rotate, num_mazes, dim, prob, prng, obs_max, reward)
+    all_envs_path = f'{RESULTS_DIR}/all_envs.dill'
+    restored = False
+    if path.exists(all_envs_path) and not restore:
+        print(f'Deleting {all_envs_path} so as to not restore')
+        os.remove(all_envs_path)
+    elif path.exists(all_envs_path) and restore:
+        print(f'Restoring from {all_envs_path}')
+        restored = True
+
+    if not restored:
+        target_env, source_envs = create_envs(rotate, num_mazes, dim, prob, prng, obs_max, reward)
+        all_envs = {'target': target_env, 'sources': source_envs}
+        with open(all_envs_path, 'wb') as f:
+            dill.dump(all_envs, f)
+    else:
+        with open(all_envs_path, 'rb') as f:
+            all_envs = dill.load(f)
+            target_env, source_envs = all_envs['target'], all_envs['sources']
+    
 
     num_iters = int(1e7)
     min_eps = 100
@@ -289,11 +310,20 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
                 D, A, num_iters, _ = env.graph.compare(target_env.graph)
                 score = sim.final_score(D)
                 sim_mat = sim.sim_matrix(D)
+            #elif metric == 'song':
             else:
                 D, num_iters = env.graph.compare_song(target_env.graph)
                 A = None
                 score = sim.final_score_song(D)
                 sim_mat = sim.sim_matrix_song(D)
+            # else:
+            #     n_source = env.graph.P.shape[1]
+            #     n_target = target_env.graph.P.shape[1]
+            #     D = np.ones((n_source, n_target))
+            #     D = D / np.sum(D)
+            #     A = None
+            #     score = sim.final_score_song(D)
+            #     sim_mat = sim.sim_matrix_song(D)
             print(f'\tNum iters: {num_iters}, score: {score}')
             scores.append(score)
             dist_mats.append(D)
@@ -309,17 +339,22 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
             data = pickle.load(f)
     
     
+    if notransfer:
+        print('Exiting early, without doing transfer!')
+        sys.exit(0)
+    
+
     # Now, do the actual weight transfer
     n_trials = 5 if metric == 'empty' else 50
     first_50_total = None
     completed_total = None
     total_step = {}
     # End trial early if reaching this many completed episodes...
-    measure_eps = 10
+    measure_eps = 1
     max_eps = 201
     measure_iters = 1e4
     for trial in range(n_trials):
-        print(f'{metric} TRANSFER TRIAL', trial, '/', n_trials)
+        print(f'{metric}, {transfer_method} TRANSFER TRIAL', trial, '/', n_trials)
         idx = 0
         optimal_percents = []
         transferred_trainers = []
@@ -355,32 +390,37 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
         def get_completed(steps):
             tmp = np.cumsum(steps)
             return np.searchsorted(tmp, measure_iters)
-        completed_eps = np.array([get_completed(x.steps[:measure_eps]) for x in transferred_trainers])
-        first_50 = np.array([np.array(x.steps[:measure_eps]).mean() for x in transferred_trainers])
+        # completed_eps = np.array([get_completed(x.steps[:measure_eps]) for x in transferred_trainers])
+        # first_50 = np.array([np.array(x.steps[:measure_eps]).mean() for x in transferred_trainers])
         if first_50_total is None:
-            first_50_total = first_50.copy()
-            completed_total = completed_eps.copy()
+            first_50_total = []
+            # first_50_total = first_50.copy()
+            # completed_total = completed_eps.copy()
             for idx, x in enumerate(transferred_trainers):
-                total_step[idx] = np.array(x.steps).copy()
+                #total_step[idx] = np.array(x.steps).copy()
+                total_step[idx] = [np.array(x.steps).copy()]
         else:
-            first_50_total += first_50
-            completed_total += completed_eps
+            # first_50_total += first_50
+            # completed_total += completed_eps
             for idx, x in enumerate(transferred_trainers):
-                cur_total = total_step[idx]
-                next_addition = np.array(x.steps)
-                assert cur_total.shape == next_addition.shape, 'Error, mismatch in completed episodes between trials'
-                total_step[idx] += np.array(x.steps)
-    first_50_avg = first_50_total/n_trials
-    completed_eps_avg = completed_total/n_trials
+                # cur_total = total_step[idx]
+                # next_addition = np.array(x.steps)
+                # assert cur_total.shape == next_addition.shape, 'Error, mismatch in completed episodes between trials'
+                #total_step[idx] += np.array(x.steps)
+                total_step[idx].append(np.array(x.steps).copy())
+    # first_50_avg = [0]#first_50_total/n_trials
+    # completed_eps_avg = [0] #completed_total/n_trials
     with open(f'{RESULTS_DIR}/{metric}_res.txt', 'w+') as f:
-        f.write('[' + ', '.join(['%.5f' % x for x in first_50_avg]) + ']\n')
-        f.write('[' + ', '.join([('%.5f' % x) for x in data['scores']]) + ']\n')
-        f.write('[' + ', '.join(['%.5f' % x for x in completed_eps_avg]) + ']\n')
-        f.write(f'{len(transferred_trainers)}\n')
+        # f.write('[' + ', '.join(['%.5f' % x for x in first_50_avg]) + ']\n')
+        # f.write('[' + ', '.join([('%.5f' % x) for x in data['scores']]) + ']\n')
+        # f.write('[' + ', '.join(['%.5f' % x for x in completed_eps_avg]) + ']\n')
+        f.write(f'{len(transferred_trainers)} {n_trials}\n')
         for i in range(len(transferred_trainers)):
-            f.write('[' + ', '.join(['%.5f' % x for x in total_step[i]/n_trials]) + ']\n')
+            for k in range(n_trials):
+                f.write('[' + ', '.join(['%.5f' % x for x in total_step[i][k]]) + ']\n')
         tmp = ARG_DICT.copy()
         tmp['n_trials'] = n_trials
+        tmp['out_version'] = OUT_VERSION
         f.write(str(tmp) + '\n')
 
 
@@ -404,6 +444,7 @@ if __name__ == '__main__':
     parser.add_argument('--restore', help='Restore or not', action='store_true')
     parser.add_argument('--obsmax', help='Max obs probability, to be averaged with 1.0', default=0.5)
     parser.add_argument('--reward', help='Goal reward', default=1)
+    parser.add_argument('--notransfer', help='Exit early, before performing transfer experiment', action='store_true')
     
     # TODO: cache params passed in, save in output directory; pass in RESULTS_DIR rather than assuming
     args = parser.parse_args()
@@ -422,11 +463,13 @@ if __name__ == '__main__':
     results = args.results
     transfer_method = args.transfer
     score_method = args.score
+    notransfer =  args.notransfer 
     RESULTS_DIR = results
 
     ARG_DICT = vars(args)
 
-    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, transfer_method, score_method, restore=restore)
+    bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward,\
+                                       transfer_method, score_method, restore=restore, notransfer=notransfer)
     if metric == 'both':
         waiting = []
         for metric in ALGO_CHOICES:
