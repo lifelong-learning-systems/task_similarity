@@ -14,9 +14,9 @@ def setup_dirs(exist_ok=False):
     def dir_exists(path):
         return os.path.exists(path) and os.path.isdir(path)
 
-    if not dir_exists(BASE_DIR):
-        print(f'Creating base dir: {BASE_DIR}')
-        os.makedirs(BASE_DIR, exist_ok=exist_ok)
+    if not dir_exists(NESTED_DIR):
+        print(f'Creating base dir: {NESTED_DIR}')
+        os.makedirs(NESTED_DIR, exist_ok=exist_ok)
     elif not exist_ok:
         print('Base dir already exists...')
         sys.exit(1)
