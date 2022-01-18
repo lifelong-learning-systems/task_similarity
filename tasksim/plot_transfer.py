@@ -16,11 +16,47 @@ DIFF = False
 USE_HAUS = True
 
 
-def get_completed(steps, measure_iters, min=0):
-    tmp = np.cumsum(steps) - min
-    tmp = np.array(tmp)
-    tmp = tmp[tmp >= 0]
-    return np.searchsorted(tmp, measure_iters)
+def get_completed(steps, measure_iters, key=None):
+    if key is None:
+        return np.searchsorted(np.cumsum(steps), measure_iters)
+    if key in get_completed.cache:
+        summed = get_completed.cache[key]
+    else:
+        summed = np.cumsum(steps)
+        get_completed.cache[key] = summed
+    return np.searchsorted(summed, measure_iters)
+get_completed.cache = {}
+
+def get_completed_list(steps, boundaries, key=None):
+    if key is None:
+        summed = np.cumsum(steps)
+    elif key in get_completed.cache:
+        summed = get_completed.cache[key]
+    else:
+        summed = np.cumsum(steps)
+        get_completed.cache[key] = summed
+    
+    completed = np.zeros(len(boundaries))
+    num_completed = 0
+    cur_idx = 0
+    for b_idx, b in enumerate(boundaries):
+        list_end = False
+        while True:
+            if cur_idx >= len(summed):
+                completed[b_idx] = num_completed
+                list_end = True
+                break
+            if summed[cur_idx] <= b:
+                num_completed += 1
+                cur_idx += 1
+            else:
+                completed[b_idx] = num_completed
+                break
+        if list_end:
+            break
+        if b_idx + 1 == len(boundaries):
+            completed[b_idx] = num_completed
+    return completed
 
 def get_all_completed(raw_steps, measure_iters):
     ret = {}
@@ -34,6 +70,7 @@ def get_all_completed(raw_steps, measure_iters):
 
 def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
 
+    get_completed.cache = {}
     boundaries = np.linspace(0, measure_iters, chunks)
 
     ret = {}
@@ -42,17 +79,24 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
         completed = {}
         # for each source env
         for idx, steps_list in data.items():
-            performance = []
-            for boundary_idx, boundary in enumerate(boundaries):
-                if boundary_idx == 0:
-                    performance.append(0)
-                    continue
-                prev_completed = np.mean([get_completed(steps, boundaries[boundary_idx-1]) for steps in steps_list])
-                num_completed = np.mean([get_completed(steps, boundary) for steps in steps_list])
-                if DIFF:
-                    performance.append(num_completed - prev_completed)
-                else:
-                    performance.append(num_completed)
+
+            completed_eps = np.zeros((len(steps_list), len(boundaries)))
+            for row, steps in enumerate(steps_list):
+                completed_eps[row] = get_completed_list(steps, boundaries)
+            performance = np.mean(completed_eps, axis=0)
+            if DIFF:
+                performance = np.diff(performance, prepend=0)
+
+            # performance = []
+            # base_key = (metric, idx)
+            # prev = 0
+            # for boundary in boundaries:
+            #     num_completed = np.mean([get_completed(steps, boundary, key=(*base_key, i)) for i, steps in enumerate(steps_list)])
+            #     if DIFF:
+            #         performance.append(num_completed - prev)
+            #     else:
+            #         performance.append(num_completed)
+            #     prev = num_completed
             completed[idx] = performance
         ret[metric] = completed
         total = None
@@ -73,6 +117,8 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
 
 
 def process():
+    global DIFF
+
     file_names = glob.glob(f'{RESULTS_DIR}/*.txt')
     results = {}
     raw_steps = {}
@@ -149,6 +195,26 @@ def process():
 
     plt.clf()
 
+    # DIFF = True
+    # Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
+    # all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
+    # N_SOURCES = None
+    # for _, all_perf in all_perfs.items():
+    #     N_SOURCES = len(all_perf)
+    #     break
+    # for metric, avg_perf in avg_perfs.items():
+    #     x = np.linspace(0, PERF_ITER, N_CHUNKS)
+    #     y = avg_perf
+    #     plt.plot(x, y, marker='.', label=metric)
+    # plt.ylabel('Delta Episodes')
+    # plt.xlabel('Total Iterations')
+    # plt.ylim([0, Y_HEIGHT])
+    # plt.title(f'Performance Gradient: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
+    # plt.legend()
+    # plt.savefig(f'{OUT}/performance_grad.png', dpi=DPI)
+
+    # plt.clf()
+
     DIFF = False    
     Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
     all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
@@ -177,25 +243,6 @@ def process():
 
     plt.clf()
 
-    DIFF = True
-    Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
-    all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
-    N_SOURCES = None
-    for _, all_perf in all_perfs.items():
-        N_SOURCES = len(all_perf)
-        break
-    for metric, avg_perf in avg_perfs.items():
-        x = np.linspace(0, PERF_ITER, N_CHUNKS)
-        y = avg_perf
-        plt.plot(x, y, marker='.', label=metric)
-    plt.ylabel('Delta Episodes')
-    plt.xlabel('Total Iterations')
-    plt.ylim([0, Y_HEIGHT])
-    plt.title(f'Performance Gradient: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    plt.legend()
-    plt.savefig(f'{OUT}/performance_grad.png', dpi=DPI)
-
-    plt.clf()
     # baseline_dists, baseline_iters, baseline_eps = results['Uniform']
     # epsilon = 1e-6
 
