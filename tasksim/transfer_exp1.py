@@ -307,23 +307,15 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
         for idx, env in enumerate(source_envs):
             print(f'Comparing MDP {idx} / {len(source_envs)}...')
             if metric in NEW_ALGOS:
+                assert sim.COMPUTE_DISTANCE == False, 'Unsupported currently'
                 D, A, num_iters, _ = env.graph.compare(target_env.graph)
                 score = sim.final_score(D)
                 sim_mat = sim.sim_matrix(D)
-            #elif metric == 'song':
             else:
                 D, num_iters = env.graph.compare_song(target_env.graph)
                 A = None
                 score = sim.final_score_song(D)
                 sim_mat = sim.sim_matrix_song(D)
-            # else:
-            #     n_source = env.graph.P.shape[1]
-            #     n_target = target_env.graph.P.shape[1]
-            #     D = np.ones((n_source, n_target))
-            #     D = D / np.sum(D)
-            #     A = None
-            #     score = sim.final_score_song(D)
-            #     sim_mat = sim.sim_matrix_song(D)
             print(f'\tNum iters: {num_iters}, score: {score}')
             scores.append(score)
             dist_mats.append(D)

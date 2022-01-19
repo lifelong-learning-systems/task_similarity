@@ -6,14 +6,17 @@ import argparse
 import tasksim
 import tasksim.structural_similarity as sim
 import pickle
+import dill
 import ot
 import sys
+
+from tasksim.qtrainer import QTrainer
 
 N_CHUNKS = 40
 PERF_ITER = 2500
 DPI = 300
 DIFF = False
-USE_HAUS = True
+USE_HAUS = False
 
 
 def get_completed(steps, measure_iters, key=None):
@@ -87,16 +90,6 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
             if DIFF:
                 performance = np.diff(performance, prepend=0)
 
-            # performance = []
-            # base_key = (metric, idx)
-            # prev = 0
-            # for boundary in boundaries:
-            #     num_completed = np.mean([get_completed(steps, boundary, key=(*base_key, i)) for i, steps in enumerate(steps_list)])
-            #     if DIFF:
-            #         performance.append(num_completed - prev)
-            #     else:
-            #         performance.append(num_completed)
-            #     prev = num_completed
             completed[idx] = performance
         ret[metric] = completed
         total = None
@@ -121,6 +114,7 @@ def process():
 
     file_names = glob.glob(f'{RESULTS_DIR}/*.txt')
     results = {}
+    optimals = {}
     raw_steps = {}
     meta = None
     COMPUTE_SCORES = False
@@ -131,16 +125,28 @@ def process():
         data_file = f.replace('res.txt', 'data.pkl')
         with open(data_file, 'rb') as ptr:
             data = pickle.load(ptr)
+        
+        last_token = f.split('/')[-1]
+        envs_file = f.replace(last_token, 'all_envs.dill')
+        with open(envs_file, 'rb') as ptr:
+            all_envs = dill.load(ptr)
+        target_env, source_envs = all_envs['target'], all_envs['sources']
+        trainer = QTrainer(target_env, save=False)
+        optimal_len, _ = trainer.compute_optimal_path(target_env.fixed_start)
+
         # make into distance
         scores = []
+        optimal_lens = []
         for idx, D in enumerate(data['dist_mats']):
             if key == 'New':
-                D = sim.coallesce_sim(D)
+                D = 1 - D
             elif key == 'Uniform':
                 D = np.ones(D.shape) / np.ones(D.shape).size
             ns, nt = D.shape
             states1 = np.arange(ns)
             states2 = np.arange(nt)
+            #source_env = source_envs[idx]
+            optimal_lens.append(optimal_len)
             #haus_def = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
             if USE_HAUS:
                 haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
@@ -163,6 +169,8 @@ def process():
         scores = np.array(scores)
         #dists = process_line(lines[1])
         dists = scores
+        optimal = np.array(optimal_lens)
+        optimals[key] = optimal
         #eps_in_1000 = process_line(lines[2])
 
 
@@ -269,7 +277,8 @@ def process():
     # fig.tight_layout()
     # plt.savefig(f'{OUT}/correlation_iters.png')
 
-    return avg_perfs, meta
+    score_dict = {key: res[0] for key, res in results.items()}
+    return all_perfs, avg_perfs, score_dict, optimals, meta
 
 
 if __name__ == '__main__':
@@ -288,10 +297,13 @@ if __name__ == '__main__':
 
     sub_dirs = glob.glob(f'{parent_dir}/dim*')
     full_results = {'weight': {}, 'state': {}}
+    full_results_all = {'weight': {}, 'state': {}}
+    full_scores = {'weight': {}, 'state': {}}
+    optimal_lengths = {'weight': {}, 'state': {}}
     for dir in sub_dirs:
         RESULTS_DIR = dir
         OUT = dir
-        avg_perfs, meta = process()
+        all_perfs, avg_perfs, scores, optimals, meta = process()
         transfer = meta['transfer']
         dim = meta['dim']
         reward = meta['reward']
@@ -302,8 +314,20 @@ if __name__ == '__main__':
             full_results[main_key]['Song'] = avg_perfs['Song']
             full_results[main_key]['Uniform'] = avg_perfs['Uniform']
             full_results[main_key]['New'] = avg_perfs['New']
+            full_results_all[main_key]['Song'] = all_perfs['Song']
+            full_results_all[main_key]['Uniform'] = all_perfs['Uniform']
+            full_results_all[main_key]['New'] = all_perfs['New']
+            full_scores[main_key]['Song'] = scores['Song']
+            full_scores[main_key]['Uniform'] = scores['Uniform']
+            full_scores[main_key]['New'] = scores['New']
+            optimal_lengths[main_key]['Song'] = optimals['Song']
+            optimal_lengths[main_key]['Uniform'] = optimals['Uniform']
+            optimal_lengths[main_key]['New'] = optimals['New']
         else:
             full_results[main_key]['New_Action'] = avg_perfs['New']
+            full_results_all[main_key]['New_Action'] = all_perfs['New']
+            full_scores[main_key]['New_Action'] = scores['New']
+            optimal_lengths[main_key]['New_Action'] = optimals['New']
 
     OUT = parent_dir
     Y_HEIGHT = 150
@@ -327,6 +351,30 @@ if __name__ == '__main__':
         plt.title(f'Performance: {main_key.title()} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}{rot_str}')
         plt.legend()
         plt.savefig(f'{OUT}/{main_key}_performance.png', dpi=DPI)
+        final_perfs_avg = {key:perf[-1] for key, perf in avg_perfs.items()}
+        all_perfs = full_results_all[main_key]
+        final_perfs = {key: {idx: perf[-1] for idx, perf in perf_dict.items()} for key, perf_dict in all_perfs.items()}
+        scores = full_scores[main_key]
+
+        final_data = {}
+        final_data['meta'] = meta
+        final_data['all_perfs'] = all_perfs
+        final_data['avg_perfs'] = avg_perfs
+        final_data['final_perfs'] = final_perfs
+        final_data['avg_final_perfs'] = final_perfs_avg
+        final_data['scores'] = scores
+        final_data['optimals'] = optimal_lengths
+
+        final_out = f'{OUT}/{main_key}_final.dill'
+        with open(final_out, 'wb') as f:
+            dill.dump(final_data, f)
+        # sus_avg = {}
+        # for metric, perf_dict in final_perfs.items():
+        #     tot = []
+        #     for final_perf in perf_dict.values():
+        #         tot.append(final_perf)
+        #     # Can change to median, 25%, etc.
+        #     sus_avg[metric] = np.mean(np.array(tot))
 
     plt.clf()
 
