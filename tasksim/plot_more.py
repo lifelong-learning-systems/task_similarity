@@ -17,9 +17,10 @@ DPI = 300
 
 Condition = namedtuple('Condition', 'dim reward rot method')
 def cond_to_str(x: Condition):
-    rot_str = ' + Rotations' if x.rot else ''
-    dim_str = 'Large' if x.dim == 13 else 'Small'
-    return f'{dim_str}{rot_str}'
+    rot_str = ', Rot' if x.rot else ''
+    dim_str = 'Lg' if x.dim == 13 else 'Sm'
+    reward_str = f', R{int(x.reward)}'
+    return f'{dim_str}{reward_str}{rot_str}'
 
 def metric_name(x, method):
     if x in ['Song', 'Uniform']:
@@ -55,24 +56,29 @@ if __name__ == '__main__':
 
     # plot with seaborn barplot
     def plot_bar(df, cond_col, group_col, val_col, title, out='mean', filter=None):
+        sns.set_context("notebook", font_scale=1.4)
+        y_max = df[val_col].max()*1.3
         if filter is not None:
             df = filter(df)
         df = df[[cond_col, group_col, val_col]].drop_duplicates()
-        y_max = df[val_col].max()*2
         plt.clf()
         ax = sns.barplot(data=df, x=cond_col, y=val_col, hue=group_col)
-        ax.set(ylim=(0, y_max))
+        if 'relative' in out:
+            ax.set(ylim=(0, 130))
+        else:
+            ax.set(ylim=(0, y_max))
         for container in ax.containers:
             if 'relative' in out:
-                labels = [f"{('%d' % x)}%" for x in container.datavalues]
+                #labels = [f"{('%d' % x)}%" for x in container.datavalues]
+                labels = [f"{('%d' % x)}" for x in container.datavalues]
                 ax.bar_label(container, labels=labels)
             else:
                 ax.bar_label(container, fmt='%d')
 
         plt.title(title)
         fig = plt.gcf()
-        fig.set_size_inches(10, 6)
-        plt.savefig(f'{OUT_DIR}/{out}_transfer.png', dpi=DPI)
+        fig.set_size_inches(16, 10)
+        plt.savefig(f'{OUT_DIR}/{out}_transfer.png', dpi=DPI, bbox_inches = 'tight', pad_inches = 0.1)
         return df
     
     perfs = [[metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx, val, \
@@ -85,7 +91,8 @@ if __name__ == '__main__':
     # Storing as percentage
     df['Relative Performance'] = 100*df['Optimal'] / df['Avg. Episode Performance']
     group_keys = ['Algorithm', 'Condition']
-    df = df.sort_values(['Source', 'Metric', 'Method', 'Dimension', 'Rotate']) 
+    df['Metric ID'] = df['Metric'].apply(lambda x: 1 if x == 'New_Action' else 2 if x == 'New' else 3 if x == 'Song' else 4)
+    df = df.sort_values(['Source', 'Dimension', 'Rotate', 'Reward', 'Metric ID', 'Method']) 
 
     df['Median Performance'] = df.groupby(group_keys)['Avg. Final Performance'].transform(lambda x: x.median())
     df['Mean Performance'] = df.groupby(group_keys)['Avg. Final Performance'].transform(lambda x: x.mean())
@@ -99,11 +106,17 @@ if __name__ == '__main__':
     plot_bar(df, 'Condition', 'Algorithm', 'Avg. Relative Performance %', title = f'Mean {rel_title_base}', out='avg_relative')
     plot_bar(df, 'Condition', 'Algorithm', 'Med. Relative Performance %', title = f'Median {rel_title_base}', out='med_relative')
 
-    for main_key in ['weight', 'state']:
+    best_methods = df[((df.Method == 'weight') & (df.Metric == 'Uniform')) | \
+                        ((df.Method == 'weight') & (df.Metric == 'Song')) | \
+                        ((df.Method == 'state') & (df.Metric == 'New')) | \
+                        ((df.Method == 'state') & (df.Metric == 'New_Action'))]
+    for main_key in ['weight', 'state', 'best']:
         def filter_func(x):
-            ret = x[x.Method == main_key]
-            ret['Algorithm'] = ret['Algorithm'].str.split(',').str[0]
-            return ret
+            if main_key != 'best':
+                ret = x[x.Method == main_key]
+                ret['Algorithm'] = ret['Algorithm'].str.split(',').str[0]
+                return ret
+            return best_methods
 
         title_str = f', {main_key.title()} Transfer'
         out_str = f'{main_key}_'
