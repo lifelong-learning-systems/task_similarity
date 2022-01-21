@@ -34,7 +34,7 @@ def metric_name(x, method):
 
 def shorter_str(dim, rot):
     dim_str = 'Large (13x13)' if dim == 13 else 'Small (9x9)'
-    rot_str = ', + Rotations' if rot else ''
+    rot_str = ' + Rotations' if rot else ''
     return f'{dim_str}{rot_str}'
 
 if __name__ == '__main__':
@@ -96,20 +96,22 @@ if __name__ == '__main__':
         plt.clf()
         fig, axs = plt.subplots(*subplot_dims, sharex=True, sharey=True)
         fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-        fig.set_size_inches(8, 6)
 
         for i, col1 in enumerate(df[subplot_cols[0]].unique()):
             for j, col2 in enumerate(df[subplot_cols[1]].unique()):
                 sub_df = df[(df[subplot_cols[0]] == col1) & (df[subplot_cols[1]] == col2)]
                 ax = axs[i, j]
+                if 'relative' in out:
+                    ax.set(xlim=(0, 100))
                 ax.title.set_text(shorter_str(col1, col2))
                 legend = (i == 0 and j == 1)
-                sns.kdeplot(data=sub_df, x=val_col, hue=group_col, fill=True, bw_adjust=.5, ax=ax, legend=legend)
+                sns.kdeplot(data=sub_df, x=val_col, hue=group_col, fill=True, bw_adjust=1, ax=ax, legend=legend, cut=0)
         # for ax in axs.flat:
-        #     ax.label()
+        #     ax.label_outer()
 
         fig.suptitle(title)
-        fig.savefig(f'{OUT_DIR}/dist_{out}_transfer.png', dpi=DPI, bbox_inches = 'tight', pad_inches = 0.1)
+        fig.set_size_inches(12, 9)
+        fig.savefig(f'{OUT_DIR}/dist_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
 
     
     perfs = [[metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx, val, \
