@@ -166,7 +166,7 @@ if __name__ == '__main__':
         dist_plot = main_key == 'best'
         subplot_cols = ['Dimension', 'Rotate']
         if dist_plot:
-            plot_dist(df, 'Condition', 'Algorithm', 'Episodes Completed', subplot_cols, out=out_str.replace('_', ''), title=f'{title_base}{title_str}')
+            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func)
             plot_dist(df, 'Algorithm', 'Relative Performance', subplot_cols, title=f'{rel_title_base}{title_str}', out=out_str+'relative', filter=filter_func)
 
 
