@@ -23,16 +23,32 @@ def cond_to_str(x: Condition):
     return f'{dim_str}{reward_str}{rot_str}'
 
 def metric_name(x, method):
+    action=False
     if x in ['Song', 'Uniform']:
         ret = x
     elif x == 'New':
         ret = 'Ours'
     else:
-        ret = 'Ours (+ Action Sim)'
-    ret += f', {method.title()}'
+        ret = 'Ours'
+        action=True
+    action_str = ' + Action' if action else ''
+    ret += f', {method.title()}{action_str}'
     return ret
 
-def shorter_str(dim, rot):
+def metric_name_short(metric_name):
+    metric, method = metric_name.split(', ')
+    method_str = ', '
+    if 'State' in method:
+        method_str += 'S'
+    else:
+        method_str += 'W'
+    
+    if 'Action' in method:
+        method_str += ' + A'
+    return f'{metric}{method_str}'
+
+
+def shorter_cond(dim, rot):
     dim_str = 'Large (13x13)' if dim == 13 else 'Small (9x9)'
     rot_str = ' + Rotations' if rot else ''
     return f'{dim_str}{rot_str}'
@@ -91,7 +107,7 @@ if __name__ == '__main__':
         if filter is not None:
             df = filter(df)
         df = df[df.Reward == 100]
-        assert len(subplot_cols) == 2, 'Only 2D subplot supported'
+        assert subplot_cols == ['Dimension', 'Rotate'], 'Only 2D subplot supported'
         subplot_dims = [df[col].nunique() for col in subplot_cols]
         plt.clf()
         fig, axs = plt.subplots(*subplot_dims, sharex=True, sharey=True)
@@ -103,7 +119,7 @@ if __name__ == '__main__':
                 ax = axs[i, j]
                 if 'relative' in out:
                     ax.set(xlim=(0, 100))
-                ax.title.set_text(shorter_str(col1, col2))
+                ax.title.set_text(shorter_cond(col1, col2))
                 legend = (i == 0 and j == 1)
                 sns.kdeplot(data=sub_df, x=val_col, hue=group_col, fill=True, bw_adjust=1, ax=ax, legend=legend, cut=0)
         # for ax in axs.flat:
@@ -222,7 +238,7 @@ if __name__ == '__main__':
         print()
     stats_df = pd.DataFrame(rows, columns=['Dimension', 'Rotate', 'Reward', 'Metric', 'Method', 'Mean', 'STD', 'MAD', 'R'])
     stats_df['Condition'] = stats_df.apply(lambda x: f'{cond_to_str(Condition(x.Dimension, x.Reward, x.Rotate, x.Method))}', axis=1)
-    stat_str = lambda x: f'{"%.2f"%x.Mean} ({"%.1f"%x.STD})'
+    stat_str = lambda x: f'{"%.1f"%x.Mean} ({"%.1f"%x.STD})'
     stats_df['Out'] = stats_df.apply(stat_str, axis=1)
     stats_df['Algorithm'] = stats_df.apply(lambda x: metric_name(x.Metric, x.Method), axis=1)
     stats_df = stats_df.sort_values(['Condition', 'Algorithm'])
@@ -239,16 +255,16 @@ if __name__ == '__main__':
             val = info[info.index == (cond, algo)].iloc[0]
             row.append(val)
             if not col_init:
-                cols.append(algo)
+                cols.append(metric_name_short(algo))
         col_init = True
         rows.append(row)
     table_df = pd.DataFrame(rows, columns = cols)
     table_df = table_df.set_index('Condition')
-    table_df = table_df.transpose()
-    column_format='p | ' + 'l'*(len(table_df.columns))
+    #table_df = table_df.transpose()
+    #column_format='l'*(len(table_df.columns))
     #print(table_df)
     latex = table_df.to_latex(caption='Full Statistical Results. Entries are "mean (std)" for the given algorithm and condition.',
-                            label='tab:full_results', column_format=column_format)
+                            label='tab:full_results')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
