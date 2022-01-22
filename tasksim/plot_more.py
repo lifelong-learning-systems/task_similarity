@@ -31,7 +31,7 @@ def metric_name(x, method):
     else:
         ret = 'Ours'
         action=True
-    action_str = ' + Action' if action else ''
+    action_str = ' t + Action' if action else ''
     ret += f', {method.title()}{action_str}'
     return ret
 
