@@ -130,11 +130,11 @@ if __name__ == '__main__':
 
     
     perfs = [[metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx, val, \
-              all_data[cond]['scores'][metric][idx], all_data[cond]['optimals'][cond.method][metric][idx]] \
+              all_data[cond]['scores'][metric][idx], all_data[cond]['haus_scores'][metric][idx], all_data[cond]['optimals'][cond.method][metric][idx]] \
               for cond in conds \
               for metric, perf_dict in all_data[cond]['final_perfs'].items() \
               for idx, val in perf_dict.items()]
-    df = pd.DataFrame(perfs, columns=['Algorithm', 'Condition', 'Dimension', 'Reward', 'Rotate', 'Metric', 'Method', 'Source', 'Episodes Completed', 'Score', 'Optimal'])
+    df = pd.DataFrame(perfs, columns=['Algorithm', 'Condition', 'Dimension', 'Reward', 'Rotate', 'Metric', 'Method', 'Source', 'Episodes Completed', 'Score', 'Haus Score', 'Optimal'])
     df['Avg. Episode Performance'] = PERF_ITER / df['Episodes Completed']
     # Storing as percentage
     df['Relative Performance'] = 100*df['Optimal'] / df['Avg. Episode Performance']
@@ -349,4 +349,39 @@ if __name__ == '__main__':
     latex = latex.replace('table', 'table*')
     print(latex)
     with open(f'{OUT_DIR}/corr.tex', 'w+') as f:
+        f.write(latex + '\n')
+
+    corr_rows = []
+    # e.g. Ours, S + A; Song, W, etc.
+    for cond in df['Condition'].unique():
+        row = {}
+        row['Condition'] = cond
+        for algo in df['Algorithm'].unique():
+            sub_df = df[(df['Algorithm'] == algo) & (df['Condition'] == cond)]
+            scores = sub_df['Haus Score'].values
+            perf = sub_df['Relative Performance'].values
+            res = pg.corr(scores, perf)
+            R = res['r'].item()
+            row[algo] = R
+        corr_rows.append(row)
+    combined_row = {}
+    combined_row['Condition'] = 'All'
+    for algo in df['Algorithm'].unique():
+        sub_df = df[df['Algorithm'] == algo]
+        scores = sub_df['Haus Score'].values
+        perf = sub_df['Relative Performance'].values
+        res = pg.corr(scores, perf)
+        R = res['r'].item()
+        combined_row[algo] = R
+    corr_rows.append(combined_row)
+    corr_df = pd.DataFrame(corr_rows).set_index('Condition')
+    corr_df.columns = [metric_name_short(x) for x in corr_df.columns]
+    corr_df = corr_df.sort_index()
+    latex = corr_df.to_latex(caption="Hausdorff Pearson Correlation Results: Desired relation is negative.", label="tab:corr_res", float_format='%.3f')
+    latex = latex.replace('\\bottomrule', '')
+    latex = latex.replace('\\toprule', '')
+    latex = latex.replace('\\midrule', '')
+    latex = latex.replace('table', 'table*')
+    print(latex)
+    with open(f'{OUT_DIR}/corr_haus.tex', 'w+') as f:
         f.write(latex + '\n')
