@@ -320,6 +320,7 @@ if __name__ == '__main__':
     # e.g. Ours, S + A; Song, W, etc.
     for cond in df['Condition'].unique():
         row = {}
+        row['Condition'] = cond
         for algo in df['Algorithm'].unique():
             sub_df = df[(df['Algorithm'] == algo) & (df['Condition'] == cond)]
             scores = sub_df['Score'].values
@@ -329,6 +330,7 @@ if __name__ == '__main__':
             row[algo] = R
         corr_rows.append(row)
     combined_row = {}
+    combined_row['Condition'] = 'All'
     for algo in df['Algorithm'].unique():
         sub_df = df[df['Algorithm'] == algo]
         scores = sub_df['Score'].values
@@ -337,5 +339,13 @@ if __name__ == '__main__':
         R = res['r'].item()
         combined_row[algo] = R
     corr_rows.append(combined_row)
-    corr_df = pd.DataFrame(corr_rows)
-    import pdb; pdb.set_trace()
+    corr_df = pd.DataFrame(corr_rows).set_index('Condition')
+    corr_df.columns = [metric_name_short(x) for x in corr_df.columns]
+    latex = corr_df.to_latex(caption="Metric Pearson Correlation Results: Desired relation is negative.", label="tab:corr_res", float_format='%.3f')
+    latex = latex.replace('\\bottomrule', '')
+    latex = latex.replace('\\toprule', '')
+    latex = latex.replace('\\midrule', '')
+    latex = latex.replace('table', 'table*')
+    print(latex)
+    with open(f'{OUT_DIR}/corr.tex', 'w+') as f:
+        f.write(latex + '\n')
