@@ -377,7 +377,7 @@ if __name__ == '__main__':
     corr_df = pd.DataFrame(corr_rows).set_index('Condition')
     corr_df.columns = [metric_name_short(x) for x in corr_df.columns]
     corr_df = corr_df.sort_index()
-    latex = corr_df.to_latex(caption="Hausdorff Pearson Correlation Results: Desired relation is negative.", label="tab:corr_res", float_format='%.3f')
+    latex = corr_df.to_latex(caption="Hausdorff Pearson Correlation Results: Desired relation is negative.", label="tab:corr_haus_res", float_format='%.3f')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
