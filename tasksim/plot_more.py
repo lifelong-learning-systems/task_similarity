@@ -112,7 +112,6 @@ if __name__ == '__main__':
         plt.clf()
         fig, axs = plt.subplots(*subplot_dims, sharex=True, sharey=True)
         fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-
         for i, col1 in enumerate(df[subplot_cols[0]].unique()):
             for j, col2 in enumerate(df[subplot_cols[1]].unique()):
                 sub_df = df[(df[subplot_cols[0]] == col1) & (df[subplot_cols[1]] == col2)]
@@ -317,5 +316,26 @@ if __name__ == '__main__':
     with open(f'{OUT_DIR}/anova.tex', 'w+') as f:
         f.write(latex + '\n')
 
-
-    
+    corr_rows = []
+    # e.g. Ours, S + A; Song, W, etc.
+    for cond in df['Condition'].unique():
+        row = {}
+        for algo in df['Algorithm'].unique():
+            sub_df = df[(df['Algorithm'] == algo) & (df['Condition'] == cond)]
+            scores = sub_df['Score'].values
+            perf = sub_df['Relative Performance'].values
+            res = pg.corr(scores, perf)
+            R = res['r'].item()
+            row[algo] = R
+        corr_rows.append(row)
+    combined_row = {}
+    for algo in df['Algorithm'].unique():
+        sub_df = df[df['Algorithm'] == algo]
+        scores = sub_df['Score'].values
+        perf = sub_df['Relative Performance'].values
+        res = pg.corr(scores, perf)
+        R = res['r'].item()
+        combined_row[algo] = R
+    corr_rows.append(combined_row)
+    corr_df = pd.DataFrame(corr_rows)
+    import pdb; pdb.set_trace()
