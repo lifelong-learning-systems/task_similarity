@@ -136,6 +136,7 @@ def process():
 
         # make into distance
         scores = []
+        haus_scores = []
         optimal_lens = []
         for idx, D in enumerate(data['dist_mats']):
             if key == 'New':
@@ -154,6 +155,8 @@ def process():
             else:
                 dist_score = sim.final_score_song(D)
                 scores.append(dist_score)
+            haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
+            haus_scores.append(haus)
 
             #sinkhorn = ot.sinkhorn2(states1, states2, D, 1, method='sinkhorn')[0]
             #sus_score = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
@@ -167,8 +170,10 @@ def process():
             return np.array([])
         #iters_per_ep = process_line(lines[0])
         scores = np.array(scores)
+        haus_scores = np.array(haus_scores)
         #dists = process_line(lines[1])
         dists = scores
+        haus_dists = haus_scores
         optimal = np.array(optimal_lens)
         optimals[key] = optimal
         #eps_in_1000 = process_line(lines[2])
@@ -184,7 +189,7 @@ def process():
 
         if key == 'new_dist_normalize'.title():
             continue
-        results[key] = (dists, None, None)
+        results[key] = (dists, haus_dists, None)
         if meta is None:
             meta = ast.literal_eval(lines[-1])
 
@@ -198,8 +203,8 @@ def process():
 
     all_completed = get_all_completed(raw_steps, 1500)
     for key in raw_steps.keys():
-        dists, iters, eps = results[key]
-        results[key] = dists, iters, all_completed[key]
+        dists, haus_dists, eps = results[key]
+        results[key] = dists, haus_dists, all_completed[key]
 
     plt.clf()
 
@@ -278,7 +283,8 @@ def process():
     # plt.savefig(f'{OUT}/correlation_iters.png')
 
     score_dict = {key: res[0] for key, res in results.items()}
-    return all_perfs, avg_perfs, score_dict, optimals, meta
+    haus_score_dict = {key: res[1] for key, res in results.items()}
+    return all_perfs, avg_perfs, score_dict, haus_score_dict, optimals, meta
 
 
 if __name__ == '__main__':
@@ -299,11 +305,12 @@ if __name__ == '__main__':
     full_results = {'weight': {}, 'state': {}}
     full_results_all = {'weight': {}, 'state': {}}
     full_scores = {'weight': {}, 'state': {}}
+    full_haus_scores = {'weight': {}, 'state': {}}
     optimal_lengths = {'weight': {}, 'state': {}}
     for dir in sub_dirs:
         RESULTS_DIR = dir
         OUT = dir
-        all_perfs, avg_perfs, scores, optimals, meta = process()
+        all_perfs, avg_perfs, scores, haus_scores, optimals, meta = process()
         transfer = meta['transfer']
         dim = meta['dim']
         reward = meta['reward']
@@ -320,6 +327,9 @@ if __name__ == '__main__':
             full_scores[main_key]['Song'] = scores['Song']
             full_scores[main_key]['Uniform'] = scores['Uniform']
             full_scores[main_key]['New'] = scores['New']
+            full_haus_scores[main_key]['Song'] = haus_scores['Song']
+            full_haus_scores[main_key]['Uniform'] = haus_scores['Uniform']
+            full_haus_scores[main_key]['New'] = haus_scores['New']
             optimal_lengths[main_key]['Song'] = optimals['Song']
             optimal_lengths[main_key]['Uniform'] = optimals['Uniform']
             optimal_lengths[main_key]['New'] = optimals['New']
@@ -327,6 +337,7 @@ if __name__ == '__main__':
             full_results[main_key]['New_Action'] = avg_perfs['New']
             full_results_all[main_key]['New_Action'] = all_perfs['New']
             full_scores[main_key]['New_Action'] = scores['New']
+            full_haus_scores[main_key]['New_Action'] = haus_scores['New']
             optimal_lengths[main_key]['New_Action'] = optimals['New']
 
     OUT = parent_dir
@@ -355,6 +366,7 @@ if __name__ == '__main__':
         all_perfs = full_results_all[main_key]
         final_perfs = {key: {idx: perf[-1] for idx, perf in perf_dict.items()} for key, perf_dict in all_perfs.items()}
         scores = full_scores[main_key]
+        haus_scores = full_haus_scores[main_key]
 
         final_data = {}
         final_data['meta'] = meta
@@ -363,6 +375,7 @@ if __name__ == '__main__':
         final_data['final_perfs'] = final_perfs
         final_data['avg_final_perfs'] = final_perfs_avg
         final_data['scores'] = scores
+        final_data['haus_scores'] = haus_scores
         final_data['optimals'] = optimal_lengths
 
         final_out = f'{OUT}/{main_key}_final.dill'
