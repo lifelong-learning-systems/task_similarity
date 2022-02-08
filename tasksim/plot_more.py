@@ -180,6 +180,7 @@ if __name__ == '__main__':
                 ax_curve.set_xlabel('Total Iterations')
                 ax_curve.set_ylabel('Cumulative Episodes')
                 ax_curve.set_title(shorter_cond(col1, col2))
+                ax_curve.label_outer()
                 for algo, perf in zip(groups, data):
                     x = np.linspace(0, PERF_ITER, N_CHUNKS)
                     y = perf
