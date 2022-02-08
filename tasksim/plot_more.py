@@ -12,6 +12,8 @@ import pandas as pd
 
 from plot_transfer import N_CHUNKS, PERF_ITER
 
+from matplotlib import colors
+
 OUT_DIR = None
 DPI = 300
 
@@ -34,6 +36,17 @@ def metric_name(x, method):
     action_str = ' + Action' if action else ''
     ret += f', {method.title()}{action_str}'
     return ret
+
+def name_to_metric_method(name):
+    method = 'weight' if 'W' in name else 'state'
+    if 'Song' in name:
+        return 'Song', method
+    elif 'Uniform' in name:
+        return 'Uniform', method
+    elif 'A' in name:
+        return 'New_Action', method
+    else:
+        return 'New', method
 
 def metric_name_short(metric_name):
     metric, method = metric_name.split(', ')
@@ -61,6 +74,27 @@ if __name__ == '__main__':
 
     files = glob.glob(f'{OUT_DIR}/**/*.dill')
     files.sort()
+
+    env_files =  glob.glob(f'{OUT_DIR}/**/**/all_envs.dill')   
+    # Display an environment from no rotations, dim 13
+    env_file = list(filter(lambda x: f'{OUT_DIR}/dim13_reward100_num100' in x and 'state_action' in x, env_files))[0]
+    with open(env_file, 'rb') as f:
+        all_envs = dill.load(f)
+    choice_env = all_envs['target']
+    choice_env.do_render = True
+    choice_grid = choice_env.reset(center=False)
+    palette = sns.color_palette()
+    #cmap = colors.ListedColormap(['#420359', '#11618a', '#2ac95f', '#fff419'])
+    # grey, black, green, red
+    cmap = colors.ListedColormap([palette[7], (0, 0, 0), palette[2], palette[3]])
+    #bounds = [0, 1, 2, 3, 4]
+    #norm = colors.BoundaryNorm(bounds, cmap.N)
+    scale = 50
+    new_grid = np.zeros((scale*choice_grid.shape[0], scale*choice_grid.shape[1]))
+    for i in range(choice_grid.shape[0]):
+        for j in range(choice_grid.shape[1]):
+            new_grid[scale*i:scale*(i + 1), scale*j:scale*(j+1)] = choice_grid[i, j]
+    plt.imsave(f'{OUT_DIR}/example_grid.png', new_grid, cmap=cmap, dpi=150)
 
     all_data = {}
     conds = []
@@ -102,16 +136,31 @@ if __name__ == '__main__':
         plt.savefig(f'{OUT_DIR}/{out}_transfer.png', dpi=DPI, bbox_inches = 'tight', pad_inches = 0.1)
         return df
 
-    def plot_dist(df, group_col, val_col, subplot_cols, title, out='mean', filter=None):
+    def plot_dist(df, group_col, val_col, subplot_cols, title, out='mean', filter=None, curves=False):
         sns.set_context("notebook", font_scale=1.1)
         if filter is not None:
             df = filter(df)
-        df = df[df.Reward == 100]
+        reward_set = 100
+        df = df[df.Reward == reward_set]
         assert subplot_cols == ['Dimension', 'Rotate'], 'Only 2D subplot supported'
+
+        # for dim in df['Dimension'].unique():
+        #     for reward in df['Reward'].unique():
+        #         for rot in df['Rotate'].unique():
+        #             perf_curves = {}
+        #             for method in df['Method'].unique():
+        #                 cond = Condition(dim, reward, rot, method)
+        #                 cond_df = df[(df.Method == method) & (df.Condition == cond_to_str(cond))]
+        #                 keys = [name_to_metric(algo) for algo in cond_df['Algorithm'].unique()]
+        #                 data = all_data[cond]
+        #                 import pdb; pdb.set_trace()
+
         subplot_dims = [df[col].nunique() for col in subplot_cols]
         plt.clf()
         fig, axs = plt.subplots(*subplot_dims, sharex=True, sharey=True)
+        fig_curve, axs_curve = plt.subplots(*subplot_dims, sharex=True, sharey=True)
         fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+        fig_curve.tight_layout(rect=[0, 0.03, 1, 0.95])
         for i, col1 in enumerate(df[subplot_cols[0]].unique()):
             for j, col2 in enumerate(df[subplot_cols[1]].unique()):
                 sub_df = df[(df[subplot_cols[0]] == col1) & (df[subplot_cols[1]] == col2)]
@@ -121,14 +170,33 @@ if __name__ == '__main__':
                 ax.title.set_text(shorter_cond(col1, col2))
                 legend = (i == 0 and j == 1)
                 sns.kdeplot(data=sub_df, x=val_col, hue=group_col, fill=True, bw_adjust=1, ax=ax, legend=legend, cut=0)
+                groups = sub_df[group_col].unique()
+                metric_methods = [name_to_metric_method(x) for x in groups]
+                conds = [Condition(col1, reward_set, col2, method) for _, method in metric_methods]
+                data = []
+                for (metric, _), cond in zip(metric_methods, conds):
+                    data.append(all_data[cond]['avg_perfs'][metric])
+                ax_curve = axs_curve[i, j]
+                ax_curve.set_xlabel('Total Iterations')
+                ax_curve.set_ylabel('Cumulative Episodes')
+                ax_curve.set_title(shorter_cond(col1, col2))
+                for algo, perf in zip(groups, data):
+                    x = np.linspace(0, PERF_ITER, N_CHUNKS)
+                    y = perf
+                    ax_curve.plot(x, y, marker='.', label=algo)
+                if legend:
+                    ax_curve.legend()
         # for ax in axs.flat:
         #     ax.label_outer()
 
         fig.suptitle(title)
         fig.set_size_inches(12, 9)
         fig.savefig(f'{OUT_DIR}/dist_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
+        if curves:
+            fig_curve.suptitle('Average ' + title)
+            fig_curve.set_size_inches(12, 9)
+            fig_curve.savefig(f'{OUT_DIR}/curves_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
 
-    
     perfs = [[metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx, val, \
               all_data[cond]['scores'][metric][idx], all_data[cond]['haus_scores'][metric][idx], all_data[cond]['optimals'][cond.method][metric][idx]] \
               for cond in conds \
@@ -182,8 +250,9 @@ if __name__ == '__main__':
 
         dist_plot = main_key == 'best'
         subplot_cols = ['Dimension', 'Rotate']
+        title_str += ' Method for Each Metric'
         if dist_plot:
-            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func)
+            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func, curves=True)
             plot_dist(df, 'Algorithm', 'Relative Performance', subplot_cols, title=f'{rel_title_base}{title_str}', out=out_str+'relative', filter=filter_func)
 
 
@@ -342,7 +411,7 @@ if __name__ == '__main__':
     corr_df = pd.DataFrame(corr_rows).set_index('Condition')
     corr_df.columns = [metric_name_short(x) for x in corr_df.columns]
     corr_df = corr_df.sort_index()
-    latex = corr_df.to_latex(caption="Metric Pearson Correlation Results: Desired relation is negative.", label="tab:corr_res", float_format='%.3f')
+    latex = corr_df.to_latex(caption="Kantarovich Pearson Correlation Results: Desired relation is negative.", label="tab:corr_res", float_format='%.3f')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
