@@ -47,11 +47,11 @@
     - End the session at any time by doing `killall Python; killall python` in a separate session
     - This will create the base agents for all the environment variations, as well as store the grid 
       information and distance matrices for the relavant metrics.
-- Afterwards, use the `transfer_runner1.py` script to kick off the transfer experiments
-    - Run as `python transfer_runner1.py --results nested_results/rot_dim9_reward100_num100 --rotate --dim 9 --reward 100 --num 100`
+- Afterwards, use the `all_transfer.py` script to kick off the transfer experiments
+    - Run as `python all_transfer.py --results nested_results --restore`
     - This copies over the information from the `agent_bases` folder into new experiment folders, for all the
-      transfer methods
-- Finally, invoke the `plot_transfer.py` script to get graphs and output information
-    - `python plot_transfer2.py --parent nested_results/rot_dim9_reward100_num100`
+      transfer methods, then runs the experiments and creates the charts for each
+- Finally, invoke the `plot_more.py` script to get the final graphs and output tables
+    - `python plot_more.py --results nested_results`
 
 
