@@ -136,7 +136,7 @@ if __name__ == '__main__':
         plt.savefig(f'{OUT_DIR}/{out}_transfer.png', dpi=DPI, bbox_inches = 'tight', pad_inches = 0.1)
         return df
 
-    def plot_dist(df, group_col, val_col, subplot_cols, title, out='mean', filter=None, curves=False):
+    def plot_dist(df, group_col, val_col, subplot_cols, title, out='mean', filter=None):
         sns.set_context("notebook", font_scale=1.1)
         if filter is not None:
             df = filter(df)
@@ -174,16 +174,23 @@ if __name__ == '__main__':
                 metric_methods = [name_to_metric_method(x) for x in groups]
                 conds = [Condition(col1, reward_set, col2, method) for _, method in metric_methods]
                 data = []
+                optimals = []
                 for (metric, _), cond in zip(metric_methods, conds):
                     data.append(all_data[cond]['avg_perfs'][metric])
+                    optimals.append(all_data[cond]['optimals']['state']['Song'][0])
                 ax_curve = axs_curve[i, j]
                 ax_curve.set_xlabel('Total Iterations')
-                ax_curve.set_ylabel('Cumulative Episodes')
+                ax_curve.set_ylabel(val_col)
                 ax_curve.set_title(shorter_cond(col1, col2))
                 ax_curve.label_outer()
                 for algo, perf in zip(groups, data):
                     x = np.linspace(0, PERF_ITER, N_CHUNKS)
-                    y = perf
+                    if 'relative' not in out:
+                        y = perf
+                    else:
+                        y = np.diff(perf)
+                        y = y/((PERF_ITER/N_CHUNKS)/optimals[0])
+                        x = x[:-1]
                     ax_curve.plot(x, y, marker='.', label=algo)
                 if legend:
                     ax_curve.legend()
@@ -193,10 +200,9 @@ if __name__ == '__main__':
         fig.suptitle(title)
         fig.set_size_inches(12, 9)
         fig.savefig(f'{OUT_DIR}/dist_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
-        if curves:
-            fig_curve.suptitle('Average ' + title)
-            fig_curve.set_size_inches(12, 9)
-            fig_curve.savefig(f'{OUT_DIR}/curves_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
+        fig_curve.suptitle('Average ' + title)
+        fig_curve.set_size_inches(12, 9)
+        fig_curve.savefig(f'{OUT_DIR}/curves_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
 
     perfs = [[metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx, val, \
               all_data[cond]['scores'][metric][idx], all_data[cond]['haus_scores'][metric][idx], all_data[cond]['optimals'][cond.method][metric][idx]] \
@@ -253,7 +259,7 @@ if __name__ == '__main__':
         subplot_cols = ['Dimension', 'Rotate']
         title_str += ' Method for Each Metric'
         if dist_plot:
-            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func, curves=True)
+            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func)
             plot_dist(df, 'Algorithm', 'Relative Performance', subplot_cols, title=f'{rel_title_base}{title_str}', out=out_str+'relative', filter=filter_func)
 
 
