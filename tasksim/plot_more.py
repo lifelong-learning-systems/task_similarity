@@ -29,9 +29,9 @@ def metric_name(x, method):
     if x in ['Song', 'Uniform']:
         ret = x
     elif x == 'New':
-        ret = 'Ours'
+        ret = 'SS2'
     else:
-        ret = 'Ours'
+        ret = 'SS2'
         action=True
     action_str = ' + Action' if action else ''
     ret += f', {method.title()}{action_str}'
@@ -382,18 +382,19 @@ if __name__ == '__main__':
     for key in exp_keys:
         anova_df[f'{key} P-Value'] = pg.multicomp(anova_df[f'{key} P-Value'].values, method='bonf')[1]
     #print(anova_df)
-    latex = anova_df.to_latex(caption='Anova Results. Reported p-values are Bonferroni corrected.',
+    anova_df = anova_df.drop(columns=['Reward P-Value'])
+    latex = anova_df.to_latex(caption='Anova Results. Reported p-values are Bonferroni corrected; Reward is omitted as its p-value was 1.0000 in all cases.',
                             label='tab:anova_res', float_format='%.4e')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
-    latex = latex.replace('table', 'table*')
+    #latex = latex.replace('table', 'table*')
     print(latex)
     with open(f'{OUT_DIR}/anova.tex', 'w+') as f:
         f.write(latex + '\n')
 
     corr_rows = []
-    # e.g. Ours, S + A; Song, W, etc.
+    # e.g. SS2, S + A; Song, W, etc.
     for cond in df['Condition'].unique():
         row = {}
         row['Condition'] = cond
@@ -428,7 +429,7 @@ if __name__ == '__main__':
         f.write(latex + '\n')
 
     corr_rows = []
-    # e.g. Ours, S + A; Song, W, etc.
+    # e.g. SS2, S + A; Song, W, etc.
     for cond in df['Condition'].unique():
         row = {}
         row['Condition'] = cond
