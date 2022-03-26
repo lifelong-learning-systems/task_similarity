@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
     env_files =  glob.glob(f'{OUT_DIR}/**/**/all_envs.dill')   
     # Display an environment from no rotations, dim 13
-    env_file = list(filter(lambda x: f'{OUT_DIR}/dim13_reward100_num100' in x and 'state_action' in x, env_files))[0]
+    env_file = list(filter(lambda x: f'{OUT_DIR}/dim13_reward100_num' in x and 'state_action' in x, env_files))[0]
     with open(env_file, 'rb') as f:
         all_envs = dill.load(f)
     choice_env = all_envs['target']

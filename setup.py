@@ -53,7 +53,8 @@ setup(
         'dill',
         'tabulate',
         'dm-tree',
-        'scikit-image'
+        'scikit-image',
+        'pingouin'
     ],
     zip_safe=False,
 )
