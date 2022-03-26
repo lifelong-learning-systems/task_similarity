@@ -2,7 +2,7 @@
 
 ## Install
 
-- First create a venv:
+- First create a venv, using Python 3.8:
     - `python -m venv venv-task-sim`
     - `source venv-task-sim/bin/activate`
 - Next, install POT from source (required so that Cythonized function have access to low level wrappers):
@@ -25,20 +25,6 @@
         2. with venv activated, run:
            - `codesign -s "My Signing Identity" -f $(which python)`
 
-## Usage
-
-- Run experiments in the `tasksim/experiments` folder!
-- Create custom experiments via the provided utils
-    - `tasksim.structural_similarity`
-    - `tasksim.gridworld_generator`
-- To avoid initializing Ray on every invocation:
-    - In command line, first run:
-        - `ray start --head --num-cpus=<NUM_CPUS>`
-    - Then bring down later with:
-        - `ray stop --force`
-    - You can also initialize ray explicitly, via:
-        - `tasksim.init_ray()`
-        - If not used, then `init_ray()` will be invoked when it is lazily first needed
 
 ## Transfer Experimnents
 - Setup via the `create_bases.py` command.
@@ -55,3 +41,16 @@
     - `python plot_more.py --results nested_results`
 
 
+## Other Usage
+
+- Create custom experiments via the provided utils
+    - `tasksim.structural_similarity`
+    - `tasksim.gridworld_generator`
+- To avoid initializing Ray on every invocation:
+    - In command line, first run:
+        - `ray start --head --num-cpus=<NUM_CPUS>`
+    - Then bring down later with:
+        - `ray stop --force`
+    - You can also initialize ray explicitly, via:
+        - `tasksim.init_ray()`
+        - If not used, then `init_ray()` will be invoked when it is lazily first needed
