@@ -15,6 +15,8 @@ import ot
 import pickle
 import dill
 
+from tasksim.train_environment import EnvironmentBuilder
+
 from tasksim.qtrainer import *
 
 OUT_VERSION = 2

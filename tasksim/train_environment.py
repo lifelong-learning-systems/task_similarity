@@ -21,8 +21,6 @@ from copy import deepcopy
 import json
 from datetime import datetime
 
-from experiments.pipeline_utilities import progress_bar
-
 class EnvironmentBuilder:
     def __init__(self, shape):
         self.shape = shape

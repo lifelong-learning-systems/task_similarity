@@ -1,4 +1,3 @@
-from curriculum_tools import curriculum
 from numpy.core.fromnumeric import var
 from numpy.lib.function_base import average
 from numpy.lib.npyio import save
@@ -6,17 +5,16 @@ import tasksim.gridworld_generator as gen
 from tasksim.environment import MDPGraphEnv
 import random
 import numpy as np
-from tasksim.experiments.pipeline_utilities import progress_bar
 import tasksim.structural_similarity as sim
 import matplotlib.pyplot as plt
 import time
 import json
 from os import path
-import curriculum_tools
 from statistics import mean
 import seaborn as sns
 import argparse
 from collections import deque
+from tqdm import tqdm
 
 #Reference https://medium.com/swlh/introduction-to-q-learning-with-openai-gym-2d794da10f3d
 class QTrainer:
@@ -150,7 +148,7 @@ class QTrainer:
             optimal = None
 
         if episodic:    
-            for _ in progress_bar(episodes, prefix='Q_training(episodic)', suffix='Complete'):
+            for _ in tqdm(episodes, desc='Q_training(episodic)'):
             
                 self.total_rewards = 0
                 obs = self.env.reset()
@@ -181,7 +179,6 @@ class QTrainer:
             obs = self.env.reset()
             done = False
             step = 0
-            #for _ in progress_bar(steps, prefix='Q_training(step-wise)', suffix='Complete'):
             for _ in steps:
                 obs, reward, done, _ = self.step()
                 self.total_rewards += reward

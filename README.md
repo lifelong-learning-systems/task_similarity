@@ -9,13 +9,12 @@
     - `git clone https://github.com/BenStoler/POT.git`
     - `cd POT`
     - Install the following base dependencies of POT:
-        - `pip install numpy Cython`
+        - `pip install numpy==1.21 Cython`
     - `pip install -e .`
     - `cd ..`
 - Now install the `tasksim` package from source:
     - `git clone <TASK_SIMILARITY_REPO_URL>`
     - `cd task_similarity`
-    - `pip install -e ./tasksim/curriculum_tools`
     - `pip install -e .`
 - Additionally install `"ray[default]"`:
     - `pip install "ray[default]`
@@ -27,6 +26,7 @@
 
 
 ## Transfer Experimnents
+- In the `tasksim` folder:
 - Setup via the `create_bases.py` command.
     - Run as `python create_bases.py --restore --results agent_bases`
     - Using the `restore` flag allows future invocation to add to what was left off, if it was interrupted
