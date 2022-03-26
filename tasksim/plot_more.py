@@ -363,11 +363,8 @@ if __name__ == '__main__':
         filtered = res[res['p-unc'] <= threshold]
         filtered = filtered[['Source', 'F', 'p-unc', 'np2']].values
         algo_anova[algo] = filtered
-        # print(algo, 'Significant Effects:', len(filtered))
         for x in filtered:
             source, f, p, eff = x
-            # print(f'\t{source}:\tp={"%.4e"%p}\tnp2={"%.4f"%eff}')
-        # print()
         row = [algo]
         for key in exp_keys:
             res = pg.welch_anova(data=sub_df, dv='Relative Performance', between=key)

@@ -13,4 +13,5 @@ build/
 tasksim/results_transfer
 tasksim/cached_results
 tasksim/nested_results
+tasksim/agent_bases
 

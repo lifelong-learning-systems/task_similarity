@@ -404,38 +404,3 @@ def permute_grid(a, keep_isomorphisms=False):
         if not found:
             filtered.append(b)
     return filtered
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--file1', help='gridworld file 1 to read in')
-    parser.add_argument('--file2', help='gridworld file 2 to read in')
-    args = parser.parse_args()
-
-    file1 = 'gridworlds/3x3_base.txt'
-    file2 = 'gridworlds/5x5_base.txt'
-
-    if args.file1:
-        file1 = args.file1
-    if args.file2:
-        file2 = args.file2
-    
-    # S, A, num_iters, done = compare_files(file1, file2)
-    # score = sim.final_score(S)
-    # norm_score = sim.normalize_score(score)
-    # print(score, norm_score)
-    #assert score == compare_files2(file1, file2)
-    #assert norm_score == compare_files2_norm(file1, file2)
-    G1 = MDPGraph.from_file(file1)
-    G2 = MDPGraph.from_file(file2)
-
-    c_s = 0.995
-    c_a = 0.5
-
-    time1 = time.time()
-    S, A, num_iters, done = G1.compare(G2, c_a, c_s)
-    print('Time:', time.time() - time1)
-    score = sim.final_score(S)
-    norm_score = sim.normalize_score(score)
-    print('Score:', score) 
-    print('Normalized:', norm_score)
-
