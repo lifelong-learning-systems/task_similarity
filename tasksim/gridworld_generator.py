@@ -54,11 +54,6 @@ class MDPGraph:
         self.strat = strat
 
     @classmethod
-    def from_file(cls, path, reward=1, strat=ActionStrategy.NOOP_ACTION):
-        grid, success_prob = parse_gridworld(path=path)
-        return cls.from_grid(grid, success_prob, reward=reward, strat=strat)
-
-    @classmethod
     def from_grid(cls, grid, success_prob=0.9, reward=1, strat=ActionStrategy.NOOP_ACTION):
         P, R, out_s, out_a, available_actions, states_to_grid, grid_to_states  = cls.grid_to_graph(grid, success_prob, reward=reward, strat=strat)
         return cls(P, R, out_s, out_a, available_actions, grid, strat, states_to_grid, grid_to_states)
@@ -181,57 +176,6 @@ class MDPGraph:
     def copy(self):
         return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions, self.grid, self.strat, self.states_to_grid, self.grid_to_states)
 
-    # reorders the out-actions of the specified state
-    # can apply different permutations within an MDP and/or between MDPs
-    # TODO: work in progress
-    # Requires knowledge of which actions within out_s[x] correspond to u, d, l, r, no-op, etc.
-    def shuffle_actions(self, new_out_s):
-        # old_rows = self.out_s[0]
-        # new_rows = np.array(new_out_s)
-        # new_sorted = new_rows[np.argsort(new_rows)]
-        # old_sorted = old_rows[np.argsort(old_rows)]
-        # # Must just be a permutation of the current out neighbors of s
-        # if len(new_sorted) != len(old_sorted) or not (new_sorted == old_sorted).all():
-        #    return False
-        # # Now need to swap rows in: P, R, rel_P, rel_R, out_a, out_a_info
-        # # e.g. swap(P, [0, 1, 4], [4, 0, 1])
-        # # LEAVE out_s the same
-        # # - i.e. state u still has actions 0, 1, 4 associated with it, but now map to what was 4, 0, 1
-        # def swap_matrix(matrix):
-        #     matrix[old_rows] = matrix[new_rows]
-        # def swap_dictionary(dictionary):
-        #     new_vals = {old_r: dictionary[new_r] for old_r, new_r in zip(old_rows, new_rows)}
-        #     dictionary.update(new_vals)
-        # swap_matrix(self.P)
-        # swap_matrix(self.R)
-        # swap_dictionary(self.out_a)
-        return True
-
-    #TODO: work in progress
-    def shuffle_states(self, inplace=True, new_order=None, random_state=None):
-        old_states = np.array(range(self.P.shape[1]))
-        if new_order is None:
-            random_state = np.random if random_state is None else random_state
-            new_order = old_states.copy()
-            random_state.shuffle(new_order)
-        new_states = np.array(new_order)
-        new_sorted = new_states[np.argsort(new_states)]
-        old_sorted = old_states[np.argsort(old_states)]
-        # Must just be a permutation of the current out neighbors of s
-        if len(new_sorted) != len(old_sorted) or not (new_sorted == old_sorted).all():
-            return None
-        # swap keys of out_s
-        if not inplace:
-            self = self.copy()
-        self.out_s = {old_s: self.out_s[new_s] for old_s, new_s in zip(old_states, new_states)}
-        def swap_cols(matrix):
-            matrix[:, old_states] = matrix[:, new_states]
-        swap_cols(self.P)
-        swap_cols(self.R)
-        for _, v in self.out_a.items():
-            v[old_states] = v[new_states]
-        return self
-
     # G = (P, R, out_s, out_a) tuple
     # Deprecated now
     def append(self, other):
@@ -282,31 +226,6 @@ class MDPGraph:
     def compare2_norm(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         return sim.normalize_score(self.compare2(other, c_a, c_s), c_a, c_s)
 
-
-# parsing similar to Wang 2019, but
-# top down, left to right
-# TODO: change assertions to throws
-def parse_gridworld(path='./gridworlds/experiment1.txt'):
-    valid_chars = set(['0', '1', '2'])
-    with open(path) as f:
-        lines = f.read().splitlines()
-
-    success_prob = float(lines[0])
-    assert 0 <= success_prob and success_prob <= 1, 'Success prob must be between 0 and 1'
-
-    height, width = np.array(lines[1].split(' ')).astype(int)
-    assert height > 0 and width > 0, 'Must have positive height and width'
-    grid = np.zeros((height, width)).astype(int)
-    assert height == len(lines) - 2, 'Incorrect number of rows for specified height'
-    # remove first 2 lines, which had success prob & dimensions
-    lines = lines[2:]
-    for i in range(len(lines)):
-        line = lines[i]
-        assert width == len(line), 'Incorrect number of cols for specified width'
-        for j, char in enumerate(line):
-            assert char in valid_chars, 'Invalid character'
-            grid[i][j] = int(char)
-    return grid, success_prob
 
 # TODO: also see what happens for multiple goal states
 # TODO: non-grid world extensions??
@@ -364,40 +283,3 @@ def compare_shapes2(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DE
     return sim.final_score(compare_shapes(shape1, shape2, success_prob1, success_prob2, c_a, c_s, strat=strat))
 def compare_shapes2_norm(shape1, shape2, success_prob1=0.9, success_prob2=0.9, c_a=DEFAULT_CA, c_s=DEFAULT_CS, strat=ActionStrategy.NOOP_ACTION):
     return sim.normalize_score(compare_shapes2(shape1, shape2, success_prob1, success_prob2, c_a, c_s, strat=strat), c_a, c_s)
-
-# between two grids
-def compare_grid_symmetry(a, b, done=False):
-    # Check flips
-    if np.array_equal(a, b):
-        return True
-    b = np.fliplr(b)
-    if np.array_equal(a, b):
-        return True
-    b = np.flipud(b)
-    if np.array_equal(a, b):
-        return True
-    b = np.fliplr(b)
-    if np.array_equal(a, b):
-        return True
-    b = np.flipud(b)
-    # Check rotations
-    if done:
-        return False
-    b = np.rot90(b)
-    return compare_grid_symmetry(a, b, done=True)
-
-def permute_grid(a, keep_isomorphisms=False):
-    multiset_perms = multiset_permutations(a.flatten())
-    if keep_isomorphisms:
-        return [np.array(b).reshape(a.shape) for b in multiset_perms]
-    filtered = []
-    for b in multiset_perms:
-        b = np.array(b).reshape(a.shape)
-        found = False
-        for f in filtered:
-            if compare_grid_symmetry(b, f):
-                found = True
-                break
-        if not found:
-            filtered.append(b)
-    return filtered
