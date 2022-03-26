@@ -12,7 +12,6 @@ from sympy.utilities.iterables import multiset_permutations
 
 import tasksim
 import tasksim.structural_similarity as sim
-import tasksim.chace_structural_similarity as chace_sim
 from tasksim import DEFAULT_CA, DEFAULT_CS
 
 import argparse
@@ -261,9 +260,7 @@ class MDPGraph:
         return MDPGraph(P, R, out_s, out_a)
 
     # returns upper right of structural similarity computed on appended graphs
-    def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS, append=False, chace=False):
-        if chace:
-            return chace_sim.structural_similarity(self.P, other.P, self.R, other.R, self.out_s, other.out_s, c_a=c_a, c_s=c_s)
+    def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS, append=False):
         if append:
             G = self.append(other)
             S, A, num_iters, done = sim.structural_similarity(G.P, G.R, G.out_s, c_a=c_a, c_s=c_s)
