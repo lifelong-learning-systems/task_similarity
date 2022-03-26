@@ -94,10 +94,6 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
         ret[metric] = completed
         total = None
         for idx, perf in completed.items():
-            # if total is None:
-            #     total = np.array(perf).copy()
-            # else:
-            #     total += np.array(perf).copy()
             if total is None:
                 total = [[x] for x in perf]
             else:
@@ -105,7 +101,6 @@ def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
                     stored.append(x)
         total = [np.array(stored) for stored in total]
         avgs[metric] = [x.mean() for x in total]
-        #avgs[metric] = [np.median(x) for x in total]
     return ret, avgs
 
 
@@ -146,9 +141,7 @@ def process():
             ns, nt = D.shape
             states1 = np.arange(ns)
             states2 = np.arange(nt)
-            #source_env = source_envs[idx]
             optimal_lens.append(optimal_len)
-            #haus_def = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
             if USE_HAUS:
                 haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
                 scores.append(haus)
@@ -158,9 +151,6 @@ def process():
             haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
             haus_scores.append(haus)
 
-            #sinkhorn = ot.sinkhorn2(states1, states2, D, 1, method='sinkhorn')[0]
-            #sus_score = max(np.max(np.min(D, axis=0)), np.max(np.min(D, axis=1)))
-        
         def process_line(line):
             line = line.rstrip()
             line = line[1:-1]
@@ -168,15 +158,12 @@ def process():
                 tokens = line.split(', ')
                 return np.array([float(token) for token in tokens])
             return np.array([])
-        #iters_per_ep = process_line(lines[0])
         scores = np.array(scores)
         haus_scores = np.array(haus_scores)
-        #dists = process_line(lines[1])
         dists = scores
         haus_dists = haus_scores
         optimal = np.array(optimal_lens)
         optimals[key] = optimal
-        #eps_in_1000 = process_line(lines[2])
 
 
         tokens = lines[0].split(' ')
@@ -197,7 +184,6 @@ def process():
     dim = meta['dim']
     rotate = meta['rotate'] if 'rotate' in meta else False
     meta['rotate'] = rotate
-    #Y_HEIGHT = 150 if dim == '9' else 50
     Y_HEIGHT = 150
     transfer_method = meta['transfer'].title() if 'transfer' in meta else 'Weight_Action'
 
@@ -207,26 +193,6 @@ def process():
         results[key] = dists, haus_dists, all_completed[key]
 
     plt.clf()
-
-    # DIFF = True
-    # Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
-    # all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
-    # N_SOURCES = None
-    # for _, all_perf in all_perfs.items():
-    #     N_SOURCES = len(all_perf)
-    #     break
-    # for metric, avg_perf in avg_perfs.items():
-    #     x = np.linspace(0, PERF_ITER, N_CHUNKS)
-    #     y = avg_perf
-    #     plt.plot(x, y, marker='.', label=metric)
-    # plt.ylabel('Delta Episodes')
-    # plt.xlabel('Total Iterations')
-    # plt.ylim([0, Y_HEIGHT])
-    # plt.title(f'Performance Gradient: {transfer_method} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}')
-    # plt.legend()
-    # plt.savefig(f'{OUT}/performance_grad.png', dpi=DPI)
-
-    # plt.clf()
 
     DIFF = False    
     Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
@@ -255,32 +221,6 @@ def process():
     plt.savefig(f'{OUT}/performance.png', dpi=DPI)
 
     plt.clf()
-
-    # baseline_dists, baseline_iters, baseline_eps = results['Uniform']
-    # epsilon = 1e-6
-
-
-    # print()
-    # fig, axs = plt.subplots(2, 2)
-    # for ax, data in zip(axs, results.items()):
-    #     metric, vals = data
-    #     dists, iters, eps = vals
-    #     reached_ep = reached_eps[metric]
-    #     # R = np.corrcoef(dists, iters)[0, 1]
-    #     # print(f'Metric {metric}: R = {R}')
-    #     # ax.set_title(metric)
-    #     # ax.scatter(dists, iters, label=('R = %.2f' % R))
-    #     # ax.legend()
-    #     R = np.corrcoef(dists, reached_ep)[0, 1]
-    #     print(f'Metric {metric}: R = {R}')
-    #     ax.set_title(metric)
-    #     ax.set_xlabel('Distance')
-    #     ax.set_ylabel('Performance (# of Episodes)')
-    #     ax.scatter(dists, reached_ep, label=('R = %.2f' % R))
-    #     ax.legend()
-
-    # fig.tight_layout()
-    # plt.savefig(f'{OUT}/correlation_iters.png')
 
     score_dict = {key: res[0] for key, res in results.items()}
     haus_score_dict = {key: res[1] for key, res in results.items()}
@@ -351,10 +291,6 @@ if __name__ == '__main__':
             avg_perf = avg_perfs[metric]
             x = np.linspace(0, PERF_ITER, N_CHUNKS)
             y = avg_perf
-            # if metric == 'Uniform':
-            #     plt.plot(x, y, linestyle=':', label=metric)
-            # else:
-            #     plt.plot(x, y, marker='.', label=metric)
             plt.plot(x, y, marker='.', label=metric)
         plt.ylabel('Cumulative episodes')
         plt.xlabel('Total Iterations')
@@ -381,13 +317,5 @@ if __name__ == '__main__':
         final_out = f'{OUT}/{main_key}_final.dill'
         with open(final_out, 'wb') as f:
             dill.dump(final_data, f)
-        # sus_avg = {}
-        # for metric, perf_dict in final_perfs.items():
-        #     tot = []
-        #     for final_perf in perf_dict.values():
-        #         tot.append(final_perf)
-        #     # Can change to median, 25%, etc.
-        #     sus_avg[metric] = np.mean(np.array(tot))
-
     plt.clf()
 

@@ -10,14 +10,12 @@ import tasksim.structural_similarity as sim
 
 class MDPGraphEnv(gym.Env):
 
-    # TODO: how does POMDP impact the metric?
     def __init__(self, graph: gen.MDPGraph, obs_size=7, do_render=True, random_state=None, fixed_start=None):
         super(MDPGraphEnv, self).__init__()
         self.fixed_start = fixed_start
         self.do_render = do_render
         self.random_state = random_state if random_state is not None else np.random
         supported_strats = [gen.ActionStrategy.NOOP_EFFECT, gen.ActionStrategy.WRAP_NOOP_EFFECT, gen.ActionStrategy.NOOP_EFFECT_COMPRESS]
-        # TODO: change from assertion to throw? Or just don't take graph instance; take grid, prob, etc. instead
         assert graph.strat in supported_strats, f'Unsupported ActionStrategy: {graph.strat}'
         assert obs_size >= 3 and obs_size % 2 == 1, f'Obs Size must be an odd number >= 3'
         self.graph = graph
@@ -26,7 +24,6 @@ class MDPGraphEnv(gym.Env):
         self.obs_size = obs_size
         self.grid = graph.grid
         self.height, self.width = self.grid.shape
-        # TODO: stack of past N frames? like in arcade type enviros
         # 0 = normal, 1 = obstacle, 2 = goal state, 3 = current location, 4 = inaccessible (if not wraparound)/not visible
         self.observation_space = spaces.Box(low=0, high=4, shape=(obs_size, obs_size, ), dtype=np.uint8)
         # e.g. simple 3x3, upper-left:
@@ -38,11 +35,6 @@ class MDPGraphEnv(gym.Env):
         # 4 4 4
         # 0 3 4
         # 0 0 4
-
-    # Where do we start on the grid? Random location? Upper-left? Parameter of reset()?
-    # -> effectively an epsilon transition from an augmented start state node into the rest of the MDP Graph
-    # TODO: should our metric encompass start state? A set of start states? TBD once we get some results
-    # Default: random, any non-goal state
 
     def state_to_grid(self, state):
         return self.graph.states_to_grid[state]
@@ -63,14 +55,7 @@ class MDPGraphEnv(gym.Env):
         self.state = state
         return self.gen_obs(center=center)
 
-    # TODO: should observation be whole grid? or just a local snapshot, etc.
-    # TODO: limited observation size
-    # TODO: limited observation lag behind/around (like in Mario) or agent always center but "black out" other squares? Or see wrap-around (if available)
     def gen_obs(self, center=True):
-        # base_grid = self.grid.copy()
-        # row, col = self.row_col(self.state)
-        # base_grid[row, col] = 3
-        # return base_grid
         if not self.do_render:
             return None
         if center:

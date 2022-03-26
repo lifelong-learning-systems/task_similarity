@@ -53,7 +53,6 @@ def init_ray():
         print(f'TaskSim: Preparing ray workers..')
     from .gridworld_generator import compare_shapes, ActionStrategy
     from .structural_similarity import final_score
-    # TODO: invoking with (1, 1) doesn't truly produce lowest value...why?
     MIN_COMP = final_score(compare_shapes((1, 1), (1, 1), strat=ActionStrategy.NOOP_EFFECT_COMPRESS), norm=False)
     if DEBUG_PRINT:
         print(f'TaskSim: Ray initialization complete! Min score is {MIN_COMP}')

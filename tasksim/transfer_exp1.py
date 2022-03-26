@@ -30,12 +30,9 @@ GAMMA = 0.1
 TEST_ITER = int(1e4)
 
 
-ALGO_CHOICES = ['both', 'new', 'song', 'uniform']#, 'new_dist', 'empty']#, 'new_dist_normalize']
-NEW_ALGOS = ['new', 'new_dist', 'new_dist_normalize']
+ALGO_CHOICES = ['both', 'new', 'song', 'uniform']
+NEW_ALGOS = ['new']
 
-# These don't work:
-# 'rand_sim'
-#'weight_dist', 'weight_dist_action'
 TRANSFER_METHODS = ['weight', 'weight_action', 
                     'state', 'state_action']
 
@@ -71,13 +68,12 @@ def create_envs(rotate, num_mazes, dim, prob, prng, obs_max, reward=1):
     lower_left = dim*(dim - 1)
 
     # Generate 1 more, since it'll be the target env
-    # Then, generate 10x the amount, and select the top `num_mazes` (in terms of distance) to be compared to?
     print('Computing grids...')
     rejected = 0
     for i in range(num_mazes + 1):
         print(i, '/', num_mazes+1, '...')
         while True:
-            # Always upper left to bottom right
+            # Always upper left to bottom right, unless "rotate" set to true
             if rotate:
                 orient = prng.rand()
                 if orient < 0.25:
@@ -117,7 +113,6 @@ def create_envs(rotate, num_mazes, dim, prob, prng, obs_max, reward=1):
                 break
             else:
                 rejected += 1
-                #print('No path found, generating new grid!')
         if i == 0:
             target_env = env
         else:
@@ -132,14 +127,11 @@ def test_env(target_env, new_Q, label, metric, max_eps=None, restore=False):
         os.remove(agent_path)
     elif path.exists(agent_path) and restore:
         print(f'Restoring from {agent_path}')
-        restored = True
     
     num_iters = int(TEST_ITER)
-    #trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.2, min_epsilon=0.1, decay=5.0/num_iters)
     if metric == 'empty':
         trainer = QTrainer(target_env, save=False, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
     else:
-        # TODO: change this? To like 0.01 maybe?
         trainer = QTrainer(target_env, save=False, lr=GAMMA, epsilon=0.1, min_epsilon=0.1, decay=0)
     trainer.Q = new_Q
     trainer.run(num_iters, episodic=False, max_eps=max_eps)
@@ -155,9 +147,7 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
         use_action = False
     
     new_states = target_env.graph.P.shape[1]
-    # TODO: don't assume 4 actions, but whatever
     n_actions = 4
-    action_dist = [1.0/n_actions for _ in range(n_actions)]
     new_Q = np.zeros((new_states, 4))
     if metric == 'empty':
         return new_Q
@@ -178,7 +168,6 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
             tmp = tmp / tmp.sum()
             sim_mat = tmp
 
-        # TODO: better baseline? Maybe just copy as much of the source_Q as you can, leaving mismatched ones zero?
         # Uniform init
         if metric == 'uniform':
             tmp = np.ones(sim_mat.shape)
@@ -198,7 +187,6 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
 
         assert sim_mat.shape == (other_states, new_states), 'Incorrects sim shape'
         column_sums = np.sum(sim_mat, axis=0)
-        #action_sim_transpose = action_sim.T
         for target_state in range(new_states):
             for source_state in range(other_states):
                 w_sim = sim_mat[source_state, target_state]
@@ -210,7 +198,6 @@ def weight_transfer(target_env: MDPGraphEnv, source_envs: List, sim_mats: List, 
                         new_Q[target_state, target_action] += w*source_Q[source_state, target_action]
                     continue
 
-                # TODO: figure out action-space correspondence first!
                 source_actions = source_env.graph.out_s[source_state]
                 target_actions = target_env.graph.out_s[target_state]
                 action_subset = action_sim[source_actions].T[target_actions].T
@@ -270,7 +257,6 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
         elif path.exists(agent_path) and restore:
             print(f'Restoring from {agent_path}')
             restored = True
-        # TODO: Reduce decay if needed
         trainer = QTrainer(env, agent_path, lr=GAMMA, min_epsilon=0.1, decay=1e-6)
         optimal_len, _ = trainer.compute_optimal_path(env.fixed_start)
         if restored:
@@ -361,22 +347,15 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
                 action_sim = None
             new_Q = weight_transfer(target_env, [trainer.env], [sim_mat], [dist_mat], [source_Q], [action_sim], metric, transfer_method=transfer_method)
             new_trainer = test_env(target_env, new_Q, label, metric, max_eps=max_eps, restore=restore)
-            #print(f'\tDistance score: {score}')
-            #print(f'\tEpisodes completed: {len(new_trainer.steps)}')
             num_eps = 20
             optimal_len = optimal[idx]
             if not len(new_trainer.steps):
                 percent_optimal = 0
-                #print(f'\tLast {0} episode avg. steps: {np.inf}, percent of optimal: {percent_optimal}')
             elif len(new_trainer.steps) < 20:
                 percent_optimal = optimal_len / np.array(new_trainer.steps).mean()
-                #print(f'\tLast {len(new_trainer.steps)} episode avg. steps: {np.array(new_trainer.steps).mean()}'\
-                    #f', percent of optimal: {percent_optimal}')
             else:
                 avg_steps = moving_average(new_trainer.steps, 20)
                 percent_optimal = optimal_len / avg_steps[-1]
-                #print(f'\tLast {num_eps} episode avg. steps: {avg_steps[-1]}'\
-                    #f', percent of optimal: {percent_optimal}')
             optimal_percents.append(percent_optimal)
             transferred_trainers.append(new_trainer)
             idx += 1
@@ -384,30 +363,14 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
         def get_completed(steps):
             tmp = np.cumsum(steps)
             return np.searchsorted(tmp, measure_iters)
-        # completed_eps = np.array([get_completed(x.steps[:measure_eps]) for x in transferred_trainers])
-        # first_50 = np.array([np.array(x.steps[:measure_eps]).mean() for x in transferred_trainers])
         if first_50_total is None:
             first_50_total = []
-            # first_50_total = first_50.copy()
-            # completed_total = completed_eps.copy()
             for idx, x in enumerate(transferred_trainers):
-                #total_step[idx] = np.array(x.steps).copy()
                 total_step[idx] = [np.array(x.steps).copy()]
         else:
-            # first_50_total += first_50
-            # completed_total += completed_eps
             for idx, x in enumerate(transferred_trainers):
-                # cur_total = total_step[idx]
-                # next_addition = np.array(x.steps)
-                # assert cur_total.shape == next_addition.shape, 'Error, mismatch in completed episodes between trials'
-                #total_step[idx] += np.array(x.steps)
                 total_step[idx].append(np.array(x.steps).copy())
-    # first_50_avg = [0]#first_50_total/n_trials
-    # completed_eps_avg = [0] #completed_total/n_trials
     with open(f'{RESULTS_DIR}/{metric}_res.txt', 'w+') as f:
-        # f.write('[' + ', '.join(['%.5f' % x for x in first_50_avg]) + ']\n')
-        # f.write('[' + ', '.join([('%.5f' % x) for x in data['scores']]) + ']\n')
-        # f.write('[' + ', '.join(['%.5f' % x for x in completed_eps_avg]) + ']\n')
         f.write(f'{len(transferred_trainers)} {n_trials}\n')
         for i in range(len(transferred_trainers)):
             for k in range(n_trials):
@@ -418,12 +381,6 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
         f.write(str(tmp) + '\n')
 
 
-# Larger reward test: dim 9, prob 1.0, num 8, obsmax 0.5 [R = 100, song only]
-# Prep for exp2: dim 9, prob 1.0, num 100, obsmax 0.5
-
-# Initial larger grid: dim 13, prob 1.0, num 16, obsmax 0.4
-# Experiment w/o annealing dim 9, prob 1.0, num 8, obsmax 0.5
-# Experiment sent on slack: dim 9, prob 1.0, num 8, obsmax 0.5 [annealing starts at 0.2 epsilon, decay 5.0/num_iters]
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--metric', default=ALGO_CHOICES[0], choices=ALGO_CHOICES, help='Which metric to use.')
@@ -440,7 +397,6 @@ if __name__ == '__main__':
     parser.add_argument('--reward', help='Goal reward', default=1)
     parser.add_argument('--notransfer', help='Exit early, before performing transfer experiment', action='store_true')
     
-    # TODO: cache params passed in, save in output directory; pass in RESULTS_DIR rather than assuming
     args = parser.parse_args()
 
     seed = int(args.seed)
@@ -469,7 +425,6 @@ if __name__ == '__main__':
         for metric in ALGO_CHOICES:
             if metric == 'both':
                 continue
-            #bound(metric)
             launch_str = ' '.join([str(x) for x in sys.argv])
             metric_str = '--metric both'
             if metric_str in launch_str:

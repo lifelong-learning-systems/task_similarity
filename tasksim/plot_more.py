@@ -84,11 +84,8 @@ if __name__ == '__main__':
     choice_env.do_render = True
     choice_grid = choice_env.reset(center=False)
     palette = sns.color_palette()
-    #cmap = colors.ListedColormap(['#420359', '#11618a', '#2ac95f', '#fff419'])
     # grey, black, green, red
     cmap = colors.ListedColormap([palette[7], (0, 0, 0), palette[2], palette[3]])
-    #bounds = [0, 1, 2, 3, 4]
-    #norm = colors.BoundaryNorm(bounds, cmap.N)
     scale = 50
     new_grid = np.zeros((scale*choice_grid.shape[0], scale*choice_grid.shape[1]))
     for i in range(choice_grid.shape[0]):
@@ -124,7 +121,6 @@ if __name__ == '__main__':
             ax.set(ylim=(0, y_max))
         for container in ax.containers:
             if 'relative' in out:
-                #labels = [f"{('%d' % x)}%" for x in container.datavalues]
                 labels = [f"{('%d' % x)}" for x in container.datavalues]
                 ax.bar_label(container, labels=labels)
             else:
@@ -143,17 +139,6 @@ if __name__ == '__main__':
         reward_set = 100
         df = df[df.Reward == reward_set]
         assert subplot_cols == ['Dimension', 'Rotate'], 'Only 2D subplot supported'
-
-        # for dim in df['Dimension'].unique():
-        #     for reward in df['Reward'].unique():
-        #         for rot in df['Rotate'].unique():
-        #             perf_curves = {}
-        #             for method in df['Method'].unique():
-        #                 cond = Condition(dim, reward, rot, method)
-        #                 cond_df = df[(df.Method == method) & (df.Condition == cond_to_str(cond))]
-        #                 keys = [name_to_metric(algo) for algo in cond_df['Algorithm'].unique()]
-        #                 data = all_data[cond]
-        #                 import pdb; pdb.set_trace()
 
         subplot_dims = [df[col].nunique() for col in subplot_cols]
         plt.clf()
@@ -194,8 +179,6 @@ if __name__ == '__main__':
                     ax_curve.plot(x, y, marker='.', label=algo)
                 if legend:
                     ax_curve.legend()
-        # for ax in axs.flat:
-        #     ax.label_outer()
 
         fig.suptitle(title)
         fig.set_size_inches(12, 9)
@@ -265,7 +248,6 @@ if __name__ == '__main__':
 
     exp_keys = ['Dimension', 'Rotate', 'Reward']
     corr_keys = ['Metric', 'Method', *exp_keys]
-    #corr_keys = ['Metric', 'Method']
     all_perfs = dict(df.groupby(corr_keys)['Relative Performance'].apply(list))
     all_scores = dict(df.groupby(corr_keys)['Score'].apply(list))
     
@@ -281,7 +263,6 @@ if __name__ == '__main__':
         if algo not in algos:
             algos[algo] = {'R': {}, 'MAD': {}, 'STD': {}, 'Mean': {}}
         scores = all_scores[key]
-        #R = np.corrcoef(perfs, scores)[0, 1]
         stats = pg.corr(perfs, scores)
         R = stats['r']
         p_val = stats['p-val']
@@ -289,13 +270,6 @@ if __name__ == '__main__':
         algos[algo]['MAD'][group] = pg.mad(perfs)
         algos[algo]['STD'][group] = np.array(perfs).std()
         algos[algo]['Mean'][group] = np.array(perfs).mean()
-        #print(key, '%.4f' % R, '%.4f' % p_val)
-        # plt.clf()
-        # plt.scatter(scores, perfs)
-        # plt.xlabel('Distance')
-        # plt.ylabel('Performance')
-        # plt.title(key)
-        #plt.show()
 
     rows = []
     for group in groups:
@@ -335,9 +309,6 @@ if __name__ == '__main__':
         rows.append(row)
     table_df = pd.DataFrame(rows, columns = cols)
     table_df = table_df.set_index('Condition')
-    #table_df = table_df.transpose()
-    #column_format='l'*(len(table_df.columns))
-    #print(table_df)
     latex = table_df.to_latex(caption='Full Statistical Results. Entries are "mean (std)" for the given algorithm and condition.',
                             label='tab:full_results')
     latex = latex.replace('\\bottomrule', '')
@@ -347,10 +318,6 @@ if __name__ == '__main__':
     print(latex)
     with open(f'{OUT_DIR}/full_res.tex', 'w+') as f:
         f.write(latex + '\n')
-
-    #print(algos)
-    #print({(key, measure): np.array(x).mean() for key, inner_items in algos.items() for measure, x in inner_items.items()})
-    #import pdb; pdb.set_trace()
 
     threshold = 0.2
     algo_anova = {}
@@ -385,7 +352,6 @@ if __name__ == '__main__':
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
-    #latex = latex.replace('table', 'table*')
     print(latex)
     with open(f'{OUT_DIR}/anova.tex', 'w+') as f:
         f.write(latex + '\n')

@@ -133,8 +133,6 @@ class QTrainer:
 
     def run(self, num_iters=7500, episodic=True, early_stopping=False, threshold=.8, threshold_N=20, record=False, max_eps=None):
         
-        # TODO:
-        # if record: (RECORD THE OBSERVATIONS!)
         total_episode = 0
         total_step = 0
         performance = 0
@@ -279,7 +277,5 @@ class QTrainer:
         if found is None:
             return None, None
         _, goal_path = found
-        # goal_path is an optimal deterministic path from start_state to a goal_state
-        # graph.P: Actions - Distribution among States
         return len(goal_path), goal_path
 

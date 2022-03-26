@@ -7,8 +7,6 @@ Similar to Wang 2019, but:
 """
 import numpy as np
 import ot
-from scipy.linalg import block_diag
-from sympy.utilities.iterables import multiset_permutations
 
 import tasksim
 import tasksim.structural_similarity as sim
@@ -18,14 +16,9 @@ import argparse
 import time
 
 from enum import Enum
-
 from collections import namedtuple
 
-
-
 # Strategy for available actions; k = # of actions at each state
-# TODO: allow for both action & effect at once? NOOP_BOTH & WRAP_NOOP_BOTH maybe...
-# TODO: make composable traits, rather than all combinations listed out...
 class ActionStrategy(Enum):
     SUBSET = 1 # default: 0 <= k <= 4
     NOOP_ACTION = 2 # all states have no-op action added: 1 <= k <= 5
@@ -39,7 +32,7 @@ class ActionStrategy(Enum):
 WRAP_STRATS = [ActionStrategy.WRAP_SUBSET, ActionStrategy.WRAP_NOOP_ACTION, ActionStrategy.WRAP_NOOP_EFFECT]
 COMPRESS_STRATS = [ActionStrategy.SUBSET_COMPRESS, ActionStrategy.NOOP_EFFECT_COMPRESS]
 
-# Simple-ish wrapper class of (P, R, out_s, out_a)
+# Simple wrapper class of (P, R, out_s, out_a)
 class MDPGraph:
 
     def __init__(self, P, R, out_s, out_a, available_actions, grid, strat, states_to_grid, grid_to_states):
@@ -123,9 +116,7 @@ class MDPGraph:
                 states_to_grid[num_states] = i*width + j
                 grid_to_states[width*i + j] = num_states
                 num_states += 1
-        #assert len(goal_states) >= 1, 'At least one goal state required'
         # COMPRESS out obstacles if needed
-        #num_states = height * width
         out_neighbors_s = dict(zip(range(num_states), 
                                     [np.empty(shape=(0,), dtype=int) for i in range(num_states)]))
         out_neighbors_a = dict()
@@ -137,14 +128,11 @@ class MDPGraph:
             actions = cls.get_valid_adjacent(states_to_grid[s], grid, strat)
             filtered_actions = [grid_to_states[a] for a in actions if a is not None]
             available_actions[s, :] = [1 if a is not None else 0 for a in actions]
-            # assert len(filtered_actions) == 0 or len(filtered_actions) >= 2, \
-            #         'Invalid actions; must be either zero or at least 2 (action + no-op)'
             for action_id, action in enumerate(filtered_actions):
                 # each action a state can do creates an action node
                 out_neighbors_s[s] = np.append(out_neighbors_s[s], a_node)
                 # action nodes initialized with zero transition prob to all other states
                 out_neighbors_a[a_node] = np.zeros(num_states)
-                # TODO: maybe add a random seed in txt file + noise on the probabilities?
                 # account for where the agent actually goes
                 if len(filtered_actions) == 1:
                     success = 1
@@ -176,41 +164,8 @@ class MDPGraph:
     def copy(self):
         return MDPGraph(self.P, self.R, self.out_s, self.out_a, self.available_actions, self.grid, self.strat, self.states_to_grid, self.grid_to_states)
 
-    # G = (P, R, out_s, out_a) tuple
-    # Deprecated now
-    def append(self, other):
-        P1, R1, out_s1, out_a1 = self.P, self.R, self.out_s, self.out_a
-        P2, R2, out_s2, out_a2 = other.P, other.R, other.out_s, other.out_a
-        num_actions1, num_states1 = P1.shape
-        num_actions2, num_states2 = P2.shape
-
-        total_actions = num_actions1 + num_actions2
-        total_states = num_states1 + num_states2
-        P = block_diag(P1, P2)
-        R = block_diag(R1, R2)
-
-        out_s = dict()
-        for i in range(total_states):
-            if i < num_states1:
-                out_s[i] = out_s1[i].copy()
-            else:
-                out_s[i] = out_s2[i - num_states1] + num_actions1
-        out_a = dict()
-        for i in range(total_actions):
-            if i < num_actions1:
-                out_a[i] = out_a1[i].copy()
-            else:
-                out_a[i] = out_a2[i - num_actions1].copy()
-        return MDPGraph(P, R, out_s, out_a)
-
     # returns upper right of structural similarity computed on appended graphs
-    def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS, append=False):
-        if append:
-            G = self.append(other)
-            S, A, num_iters, done = sim.structural_similarity(G.P, G.R, G.out_s, c_a=c_a, c_s=c_s)
-            S_upper_right = S[0:self.P.shape[1], self.P.shape[1]:]
-            A_upper_right = A[0:self.P.shape[0], self.P.shape[0]:]
-            return S_upper_right, A_upper_right, num_iters, done
+    def compare(self, other, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
         P1, P2, R1, R2, out_s1, out_s2 = self.P, other.P, self.R, other.R, self.out_s, other.out_s
         return sim.cross_structural_similarity(P1, P2, R1, R2, out_s1, out_s2, c_a=c_a, c_s=c_s)
 
@@ -227,9 +182,6 @@ class MDPGraph:
         return sim.normalize_score(self.compare2(other, c_a, c_s), c_a, c_s)
 
 
-# TODO: also see what happens for multiple goal states
-# TODO: non-grid world extensions??
-# TODO: do rewards need to be normalized between [0, 1]?
 # Goal locations: list of tuples
 # Goal rewards: list of floats
 def create_grid(shape, goal_locations=None, obstacle_locations=None, obstacle_prob=0, random_state=None):
@@ -258,9 +210,6 @@ def create_grid(shape, goal_locations=None, obstacle_locations=None, obstacle_pr
                 grid[i][j] = 1
     return grid
 
-def append_graphs(G1, G2):
-    return G1.append(G2)
-
 def compare_graphs(G1, G2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return G1.compare(G2, c_a, c_s)
 def compare_graphs2(G1, G2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
@@ -268,7 +217,6 @@ def compare_graphs2(G1, G2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
 def compare_graphs2_norm(G1, G2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return G1.compare2_norm(G2, c_a, c_s)
 
-# TODO: probably do the whole kwargs thing idk instead of always using these defaults
 def compare_files(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     return compare_graphs(MDPGraph.from_file(file1), MDPGraph.from_file(file2), c_a, c_s)
 def compare_files2(file1, file2, c_a=DEFAULT_CA, c_s=DEFAULT_CS):

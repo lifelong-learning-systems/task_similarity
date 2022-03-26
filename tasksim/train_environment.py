@@ -79,9 +79,6 @@ class EnvironmentBuilder:
         self.fixed_start=fixed_start
         return self
         
-    # TODO: rotate?
-    #def rotate(self, )
-        
     def build(self, transition_random_state=None, env_random_state=None):
         for o in self.obstacle_locations:
             row, col = self.row_col(o)
@@ -105,7 +102,6 @@ class EnvironmentBuilder:
                     noise = random_state.rand()
                     # Between [-percent, +percent)
                     z = -percent + 2*percent*noise
-                    # TODO: scale by element or nah? Probably?
                     P[i, j] = max(0, P[i, j] + z)
                 normed_row = sk_norm(np.array([P[i]]), norm='l1')[0]
                 P[i, :] = normed_row

@@ -41,25 +41,16 @@ def setup_dirs(dim, reward, num, rotate, agents='agent_bases'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Base for result directories', default='runner_results')
-    #parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
     parser.add_argument('--rotate', help='If true, randomly orient the start/goal locations', action='store_true')
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=10)
-    #parser.add_argument('--prob', help='Transition probability', default=1)
-    #parser.add_argument('--restore', help='Restore or not', action='store_true')
     parser.add_argument('--reward', help='Goal reward', default=1)
     
-    # TODO: cache params passed in, save in output directory; pass in RESULTS_DIR rather than assuming
     args = parser.parse_args()
 
-    #seed = int(args.seed)
     dim = int(args.dim)
     num_mazes = int(args.num)
     assert 1 <= num_mazes <= 100, 'Num mazes invalid'
-    # prob = float(args.prob)
-    # prob = max(prob, 0)
-    # prob = min(prob, 1)
-    #restore = args.restore
     reward = float(args.reward)
     results = args.results
     rotate = args.rotate

@@ -66,30 +66,9 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     # since it's very small (at most 5 action neighbors), use python min/max instead of numpy
     return max([min(x) for x in delta_a[N_u].T[N_v].T])
 
-# TODO: normalize by dividing by a constant?
-# OPTIMAL = set c_s as close to 1 and c_a as close to 0 as still seems reasonable
-# I like having c_a as 0.5, since it evenly balances d_rwd and d_emd, then c_s around 0.99-0.999ish
-# TODO: incorporate rtol & atol by being inspired by numpy.isclose
-# - isclose(a, b, rtol, btol) -> abs(a - b) <= (atol + rtol*abs(b))
-def compute_constant_limit(c_a=DEFAULT_CA, c_s=DEFAULT_CS):
-    # solving the following recurrence relations for a(n) and s(n):
-    # a(n+1) = 1 - c_a(1 - s(n))
-    # s(n+1) = c_s*a(n+1)
-    # ...
-    # a(n+1) = 1 - c_a(1 - c_s*a(n))
-    # s(n+1) = c_s*(1 - c_a(1 - s(n)))
-    A = c_s*c_a
-    B = c_s - c_s*c_a
-    #C = 1 - c_a
-    limit_s = B/(1 - A) # Also just...(c_s - c_s*c_a)/(1 - c_s*c_a) = (c_s - A)/(1 - A) = (A - c_s)/(A - 1)
-    #limit_a = C/(1 - A)
-    return 1 - limit_s
-
 def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
-    #limit = compute_constant_limit(c_a, c_s)
     limit = get_min_comp()
-    # TODO: how to normalize? simple division? or some other asymptotic curve, maybe logarithmic? idk
     return (score - limit) / (1 - limit)
 
 def coallesce_sim(S):
@@ -193,7 +172,6 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s, co
     return entries
 
 
-# TODO: combine common functionality between SS and CSS
 def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=1e-3,
                           stop_atol=1e-4, max_iters=1e5):
     """
@@ -229,23 +207,11 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
-    #TODO tmp assignment
     d = np.zeros((n_states1, n_states2))
     d_prime = np.zeros((n_states1, n_states2))
     delta = np.inf
     # Paper assumes s' doesn't matter for reward; since our MDPs are stochastic, it does matter;
     # For fair comparison, using same reward function as other metric
-    # def compute_exp(P, R):
-    #     n = P.shape[0]
-    #     # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
-    #     ret_pos = np.zeros((n,))
-    #     ret_neg = np.zeros((n,))
-    #     for i in range(n):
-    #         probs, rewards = P[i], R[i]
-    #         pos, neg = rewards >= 0, rewards < 0
-    #         ret_pos[i] = np.dot(probs[pos], rewards[pos])
-    #         ret_neg[i] = np.dot(probs[neg], rewards[neg])
-    #     return ret_pos, ret_neg
     def compute_exp(P, R):
         n = P.shape[0]
         ret = np.zeros((n,))
@@ -256,9 +222,7 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
     expected_rewards1 = compute_exp(action_dists1, reward_matrix1)
     expected_rewards2 = compute_exp(action_dists2, reward_matrix2)
 
-    # TODO: add performance optimizations as needed
     num_iters = 0
-    #while not (delta < stop_tol):
     while True:
         num_iters += 1
         for s_i in states1:
@@ -267,10 +231,6 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                 actions_j = out_neighbors_S2[s_j]
                 avail_i = available_actions1[s_i]
                 avail_j = available_actions2[s_j]
-                # Limited to paper specifics
-                #assert len(actions_i) == len(actions_j), 'For Song metric, actions must have 1:1 correspondence'
-                # Assumes 1:1 correspondence in effect
-                #for a_i, a_j in zip(actions_i, actions_j):
                 act1_idx = 0
                 act2_idx = 0
                 for a_i, a_j in zip(avail_i, avail_j):
@@ -291,20 +251,14 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                     d_emd = emd_c(P_i_ptr, P_j_ptr, d_ptr, len(P_a_i), len(P_a_j), int(max_iters))
                     #d_rwd = cached_reward_differences[a_i, a_j]
                     d_rwd = abs(expected_rewards1[a_i] - expected_rewards2[a_j])
-                    # TODO: what if this is greater than 1? Is that still okay?? Should we scale d_rwd by (1-c)?
-                    #tmp = (1 - c)*d_rwd + c*d_emd
                     tmp = d_rwd + c*d_emd
                     if tmp > 1 and not cross_structural_similarity_song.WARNED:
                         print('WARNING: d_rwd & d_emd combination resulted in value greater than 1')
                         cross_structural_similarity_song.WARNED = True
                         
                     d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
-                #val = d_prime[s_i, s_j]
-                #print(val)
         
-        #delta = np.sum(np.abs(d_prime - d)) / (n_states1*n_states2)
-        # if delta < stop_tol:
-        #     break
+        # Changed from original algorithm to instead use the identical stopping condition as our metric
         if np.allclose(d_prime, d, rtol=STOP_RTOL, atol=STOP_ATOL):
             break
         from copy import deepcopy
@@ -313,7 +267,6 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
     return d, num_iters - 1
 cross_structural_similarity_song.WARNED = False
 
-# TODO: Change InitStrategy to be ONES? Would need to re-run experiments...
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=STOP_RTOL,
                                 stop_atol=STOP_ATOL, max_iters=1e5,
@@ -323,11 +276,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     cpus = get_num_cpu()
     n_actions1, n_states1 = action_dists1.shape
     n_actions2, n_states2 = action_dists2.shape
-    #assert n_states1 >= 2 and n_states2 >= 2, f'Min n_states is at least 2; invoked with {n_states1} and {n_states2}'
 
-    # Initialization SHOULDN'T matter that much...
-    # zeros means normalizing slightly overshoots (positive)
-    # ones means normalizing slightly undershoots (negative, weird)
     if init_strategy == InitStrategy.IDENTITY or self_similarity:
         S = np.zeros((n_states1, n_states2))
         A = np.zeros((n_actions1, n_actions2))
@@ -348,7 +297,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
-    one_minus_c_a = 1 - c_a  # optimization
     emd_maxiters = 1e5
 
     last_S = S.copy()
@@ -376,7 +324,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
     def compute_exp(P, R):
         n = P.shape[0]
-        # TODO for paper: describe it as discretizing reward distribution, capturing more than just expected value
         ret = np.zeros((n,))
         for i in range(n):
             probs, rewards = P[i], R[i]
@@ -419,16 +366,12 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
     # FROM THIS POINT ON, S is to be considered distance matrices, rather than similarity
     while not done and iter < max_iters:
-        # TODO: some amount of parallelization
-        # one_minus_S = 1 - S
-        # one_minus_S_id = ray.put(one_minus_S)
         D_s = S if COMPUTE_DISTANCE else 1 - S
         D_s_id = ray.put(D_s)
 
         bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, D_s_id,
                                                         c_a, emd_maxiters,
                                                         handle=compute_a_py_full)
-                                                        # handle=pc.compute_chunk)
         
 
         remoted_a = [bind_compute_a(chunk) for chunk in action_chunks]
@@ -441,10 +384,7 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
             A[i_lower] = A.T[i_lower]
         
 
-        # AT THIS POINT, A is a distance matrix
-        # each entry in A computed by (1 - c_a)*d_rwd - (1 - c_a)*d_emd
 
-        # TODO: should these still be 1 - A
         D_a = A if COMPUTE_DISTANCE else 1 - A
         D_a_transpose = A.T if COMPUTE_DISTANCE else 1 - A.T
         D_a_id = ray.put(D_a)
@@ -461,7 +401,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
 
         if np.allclose(A, last_A, rtol=stop_rtol, atol=stop_atol) and np.allclose(S, last_S, rtol=stop_rtol,
                                                                                   atol=stop_atol):
-            # Note: Could update this to use specified more specific convergence criteria
             done = True
         else:
             last_S = S.copy()
