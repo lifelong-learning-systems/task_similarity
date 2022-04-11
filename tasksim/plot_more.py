@@ -1,3 +1,7 @@
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
 from os import name
 import numpy as np
 import glob
@@ -18,24 +22,28 @@ OUT_DIR = None
 DPI = 300
 
 Condition = namedtuple('Condition', 'dim reward rot method')
+
+
 def cond_to_str(x: Condition):
     rot_str = ', Rot' if x.rot else ''
     dim_str = 'Lg' if x.dim == 13 else 'Sm'
     reward_str = f', R{int(x.reward)}'
     return f'{dim_str}{reward_str}{rot_str}'
 
+
 def metric_name(x, method):
-    action=False
+    action = False
     if x in ['Song', 'Uniform']:
         ret = x
     elif x == 'New':
         ret = 'SS2'
     else:
         ret = 'SS2'
-        action=True
+        action = True
     action_str = ' + Action' if action else ''
     ret += f', {method.title()}{action_str}'
     return ret
+
 
 def name_to_metric_method(name):
     method = 'weight' if 'W' in name else 'state'
@@ -48,6 +56,7 @@ def name_to_metric_method(name):
     else:
         return 'New', method
 
+
 def metric_name_short(metric_name):
     metric, method = metric_name.split(', ')
     method_str = ', '
@@ -55,7 +64,7 @@ def metric_name_short(metric_name):
         method_str += 'S'
     else:
         method_str += 'W'
-    
+
     if 'Action' in method:
         method_str += ' + A'
     return f'{metric}{method_str}'
@@ -66,6 +75,7 @@ def shorter_cond(dim, rot):
     rot_str = ' + Rotations' if rot else ''
     return f'{dim_str}{rot_str}'
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Top level dir to read from', default='nested_results')
@@ -75,7 +85,7 @@ if __name__ == '__main__':
     files = glob.glob(f'{OUT_DIR}/**/*.dill')
     files.sort()
 
-    env_files =  glob.glob(f'{OUT_DIR}/**/**/all_envs.dill')   
+    env_files = glob.glob(f'{OUT_DIR}/**/**/all_envs.dill')
     # Display an environment from no rotations, dim 13
     env_file = list(filter(lambda x: f'{OUT_DIR}/dim13_reward100_num' in x and 'state_action' in x, env_files))[0]
     with open(env_file, 'rb') as f:
@@ -87,10 +97,10 @@ if __name__ == '__main__':
     # grey, black, green, red
     cmap = colors.ListedColormap([palette[7], (0, 0, 0), palette[2], palette[3]])
     scale = 50
-    new_grid = np.zeros((scale*choice_grid.shape[0], scale*choice_grid.shape[1]))
+    new_grid = np.zeros((scale * choice_grid.shape[0], scale * choice_grid.shape[1]))
     for i in range(choice_grid.shape[0]):
         for j in range(choice_grid.shape[1]):
-            new_grid[scale*i:scale*(i + 1), scale*j:scale*(j+1)] = choice_grid[i, j]
+            new_grid[scale * i:scale * (i + 1), scale * j:scale * (j + 1)] = choice_grid[i, j]
     plt.imsave(f'{OUT_DIR}/example_grid.png', new_grid, cmap=cmap, dpi=150)
 
     all_data = {}
@@ -105,10 +115,11 @@ if __name__ == '__main__':
         conds.append(cond)
         all_data[cond] = obj
 
+
     # plot with seaborn barplot
     def plot_bar(df, cond_col, group_col, val_col, title, out='mean', filter=None):
         sns.set_context("notebook", font_scale=1.4)
-        y_max = df[val_col].max()*1.3
+        y_max = df[val_col].max() * 1.3
         if filter is not None:
             df = filter(df)
         df = df[df.Reward == 100]
@@ -129,8 +140,9 @@ if __name__ == '__main__':
         plt.title(title)
         fig = plt.gcf()
         fig.set_size_inches(16, 10)
-        plt.savefig(f'{OUT_DIR}/{out}_transfer.png', dpi=DPI, bbox_inches = 'tight', pad_inches = 0.1)
+        plt.savefig(f'{OUT_DIR}/{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches=0.1)
         return df
+
 
     def plot_dist(df, group_col, val_col, subplot_cols, title, out='mean', filter=None):
         sns.set_context("notebook", font_scale=1.1)
@@ -174,7 +186,7 @@ if __name__ == '__main__':
                         y = perf
                     else:
                         y = np.diff(perf)
-                        y = y/((PERF_ITER/N_CHUNKS)/optimals[0])
+                        y = y / ((PERF_ITER / N_CHUNKS) / optimals[0])
                         x = x[:-1]
                     ax_curve.plot(x, y, marker='.', label=algo)
                 if legend:
@@ -182,23 +194,30 @@ if __name__ == '__main__':
 
         fig.suptitle(title)
         fig.set_size_inches(12, 9)
-        fig.savefig(f'{OUT_DIR}/dist_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
+        fig.savefig(f'{OUT_DIR}/dist_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches=0.1)
         fig_curve.suptitle('Average ' + title)
         fig_curve.set_size_inches(12, 9)
-        fig_curve.savefig(f'{OUT_DIR}/curves_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches = 0.1)
+        fig_curve.savefig(f'{OUT_DIR}/curves_{out}_transfer.png', dpi=DPI, bbox_inches='tight', pad_inches=0.1)
 
-    perfs = [[metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx, val, \
-              all_data[cond]['scores'][metric][idx], all_data[cond]['haus_scores'][metric][idx], all_data[cond]['optimals'][cond.method][metric][idx]] \
-              for cond in conds \
-              for metric, perf_dict in all_data[cond]['final_perfs'].items() \
-              for idx, val in perf_dict.items()]
-    df = pd.DataFrame(perfs, columns=['Algorithm', 'Condition', 'Dimension', 'Reward', 'Rotate', 'Metric', 'Method', 'Source', 'Episodes Completed', 'Score', 'Haus Score', 'Optimal'])
+
+    perfs = [
+        [metric_name(metric, cond.method), cond_to_str(cond), cond.dim, cond.reward, cond.rot, metric, cond.method, idx,
+         val, \
+         all_data[cond]['scores'][metric][idx], all_data[cond]['haus_scores'][metric][idx],
+         all_data[cond]['optimals'][cond.method][metric][idx]] \
+        for cond in conds \
+        for metric, perf_dict in all_data[cond]['final_perfs'].items() \
+        for idx, val in perf_dict.items()]
+    df = pd.DataFrame(perfs,
+                      columns=['Algorithm', 'Condition', 'Dimension', 'Reward', 'Rotate', 'Metric', 'Method', 'Source',
+                               'Episodes Completed', 'Score', 'Haus Score', 'Optimal'])
     df['Avg. Episode Performance'] = PERF_ITER / df['Episodes Completed']
     # Storing as percentage
-    df['Relative Performance'] = 100*df['Optimal'] / df['Avg. Episode Performance']
+    df['Relative Performance'] = 100 * df['Optimal'] / df['Avg. Episode Performance']
     group_keys = ['Algorithm', 'Condition']
-    df['Metric ID'] = df['Metric'].apply(lambda x: 1 if x == 'New_Action' else 2 if x == 'New' else 3 if x == 'Song' else 4)
-    df = df.sort_values(['Source', 'Dimension', 'Rotate', 'Reward', 'Metric ID', 'Method']) 
+    df['Metric ID'] = df['Metric'].apply(
+        lambda x: 1 if x == 'New_Action' else 2 if x == 'New' else 3 if x == 'Song' else 4)
+    df = df.sort_values(['Source', 'Dimension', 'Rotate', 'Reward', 'Metric ID', 'Method'])
 
     df['Median Performance'] = df.groupby(group_keys)['Episodes Completed'].transform(lambda x: x.median())
     df['Mean Performance'] = df.groupby(group_keys)['Episodes Completed'].transform(lambda x: x.mean())
@@ -208,16 +227,17 @@ if __name__ == '__main__':
 
     title_base = f'Number of Episodes Completed'
     rel_title_base = f'% of Optimal Performance'
-    plot_bar(df, 'Condition', 'Algorithm', 'Median Performance', title = f'Median {title_base}', out='median')
-    plot_bar(df, 'Condition', 'Algorithm', 'Mean Performance', title = f'Mean {title_base}', out='mean')
-    plot_bar(df, 'Condition', 'Algorithm', 'Avg. Relative Performance %', title = f'Mean {rel_title_base}', out='avg_relative')
-    plot_bar(df, 'Condition', 'Algorithm', 'Med. Relative Performance %', title = f'Median {rel_title_base}', out='med_relative')
-
+    plot_bar(df, 'Condition', 'Algorithm', 'Median Performance', title=f'Median {title_base}', out='median')
+    plot_bar(df, 'Condition', 'Algorithm', 'Mean Performance', title=f'Mean {title_base}', out='mean')
+    plot_bar(df, 'Condition', 'Algorithm', 'Avg. Relative Performance %', title=f'Mean {rel_title_base}',
+             out='avg_relative')
+    plot_bar(df, 'Condition', 'Algorithm', 'Med. Relative Performance %', title=f'Median {rel_title_base}',
+             out='med_relative')
 
     best_methods = df[((df.Method == 'weight') & (df.Metric == 'Uniform')) | \
-                        ((df.Method == 'weight') & (df.Metric == 'Song')) | \
-                        ((df.Method == 'state') & (df.Metric == 'New')) | \
-                        ((df.Method == 'state') & (df.Metric == 'New_Action'))]
+                      ((df.Method == 'weight') & (df.Metric == 'Song')) | \
+                      ((df.Method == 'state') & (df.Metric == 'New')) | \
+                      ((df.Method == 'state') & (df.Metric == 'New_Action'))]
     for main_key in ['weight', 'state', 'best']:
         def filter_func(x):
             if main_key != 'best':
@@ -227,30 +247,33 @@ if __name__ == '__main__':
                 ret = best_methods
             return ret
 
+
         title_str = f', {main_key.title()} Transfer'
         out_str = f'{main_key}_'
-        plot_bar(df, 'Condition', 'Algorithm', 'Median Performance', title = f'Median {title_base}{title_str}',\
-                 out=out_str+'median', filter=filter_func)
-        plot_bar(df, 'Condition', 'Algorithm', 'Mean Performance', title = f'Mean {title_base}{title_str}',\
-                 out=out_str+'mean', filter=filter_func)
-        plot_bar(df, 'Condition', 'Algorithm', 'Avg. Relative Performance %', title = f'Mean {rel_title_base}{title_str}',\
-                 out=out_str+'avg_relative', filter=filter_func)
-        plot_bar(df, 'Condition', 'Algorithm', 'Med. Relative Performance %', title = f'Median {rel_title_base}{title_str}',\
-                 out=out_str+'med_relative', filter=filter_func)
+        plot_bar(df, 'Condition', 'Algorithm', 'Median Performance', title=f'Median {title_base}{title_str}', \
+                 out=out_str + 'median', filter=filter_func)
+        plot_bar(df, 'Condition', 'Algorithm', 'Mean Performance', title=f'Mean {title_base}{title_str}', \
+                 out=out_str + 'mean', filter=filter_func)
+        plot_bar(df, 'Condition', 'Algorithm', 'Avg. Relative Performance %', title=f'Mean {rel_title_base}{title_str}', \
+                 out=out_str + 'avg_relative', filter=filter_func)
+        plot_bar(df, 'Condition', 'Algorithm', 'Med. Relative Performance %',
+                 title=f'Median {rel_title_base}{title_str}', \
+                 out=out_str + 'med_relative', filter=filter_func)
 
         dist_plot = main_key == 'best'
         subplot_cols = ['Dimension', 'Rotate']
         title_str += ' Method for Each Metric'
         if dist_plot:
-            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func)
-            plot_dist(df, 'Algorithm', 'Relative Performance', subplot_cols, title=f'{rel_title_base}{title_str}', out=out_str+'relative', filter=filter_func)
-
+            plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}',
+                      out=out_str.replace('_', ''), filter=filter_func)
+            plot_dist(df, 'Algorithm', 'Relative Performance', subplot_cols, title=f'{rel_title_base}{title_str}',
+                      out=out_str + 'relative', filter=filter_func)
 
     exp_keys = ['Dimension', 'Rotate', 'Reward']
     corr_keys = ['Metric', 'Method', *exp_keys]
     all_perfs = dict(df.groupby(corr_keys)['Relative Performance'].apply(list))
     all_scores = dict(df.groupby(corr_keys)['Score'].apply(list))
-    
+
     algos = {}
     groups = []
     for key in all_perfs.keys():
@@ -282,12 +305,14 @@ if __name__ == '__main__':
             STD = stats['STD'][group]
             Mean = stats['Mean'][group]
             row.extend([metric, method, Mean, STD, MAD, R])
-            print(f'\t{algo}: {"%.2f"%Mean} (STD={"%.2f"%STD}, MAD={"%.2f"%MAD})')
+            print(f'\t{algo}: {"%.2f" % Mean} (STD={"%.2f" % STD}, MAD={"%.2f" % MAD})')
             rows.append(row)
         print()
-    stats_df = pd.DataFrame(rows, columns=['Dimension', 'Rotate', 'Reward', 'Metric', 'Method', 'Mean', 'STD', 'MAD', 'R'])
-    stats_df['Condition'] = stats_df.apply(lambda x: f'{cond_to_str(Condition(x.Dimension, x.Reward, x.Rotate, x.Method))}', axis=1)
-    stat_str = lambda x: f'{"%.1f"%x.Mean} ({"%.1f"%x.STD})'
+    stats_df = pd.DataFrame(rows,
+                            columns=['Dimension', 'Rotate', 'Reward', 'Metric', 'Method', 'Mean', 'STD', 'MAD', 'R'])
+    stats_df['Condition'] = stats_df.apply(
+        lambda x: f'{cond_to_str(Condition(x.Dimension, x.Reward, x.Rotate, x.Method))}', axis=1)
+    stat_str = lambda x: f'{"%.1f" % x.Mean} ({"%.1f" % x.STD})'
     stats_df['Out'] = stats_df.apply(stat_str, axis=1)
     stats_df['Algorithm'] = stats_df.apply(lambda x: metric_name(x.Metric, x.Method), axis=1)
     stats_df = stats_df.sort_values(['Condition', 'Algorithm'])
@@ -307,10 +332,11 @@ if __name__ == '__main__':
                 cols.append(metric_name_short(algo))
         col_init = True
         rows.append(row)
-    table_df = pd.DataFrame(rows, columns = cols)
+    table_df = pd.DataFrame(rows, columns=cols)
     table_df = table_df.set_index('Condition')
-    latex = table_df.to_latex(caption='Full Statistical Results. Entries are "mean (std)" for the given algorithm and condition.',
-                            label='tab:full_results')
+    latex = table_df.to_latex(
+        caption='Full Statistical Results. Entries are "mean (std)" for the given algorithm and condition.',
+        label='tab:full_results')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
@@ -345,10 +371,11 @@ if __name__ == '__main__':
     anova_df = anova_df.set_index('Algorithm')
     for key in exp_keys:
         anova_df[f'{key} P-Value'] = pg.multicomp(anova_df[f'{key} P-Value'].values, method='bonf')[1]
-    #print(anova_df)
+    # print(anova_df)
     anova_df = anova_df.drop(columns=['Reward P-Value'])
-    latex = anova_df.to_latex(caption='Anova Results. Reported p-values are Bonferroni corrected; Reward is omitted as its p-value was 1.0000 in all cases.',
-                            label='tab:anova_res', float_format='%.4e')
+    latex = anova_df.to_latex(
+        caption='Anova Results. Reported p-values are Bonferroni corrected; Reward is omitted as its p-value was 1.0000 in all cases.',
+        label='tab:anova_res', float_format='%.4e')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
@@ -382,7 +409,8 @@ if __name__ == '__main__':
     corr_df = pd.DataFrame(corr_rows).set_index('Condition')
     corr_df.columns = [metric_name_short(x) for x in corr_df.columns]
     corr_df = corr_df.sort_index()
-    latex = corr_df.to_latex(caption="Kantarovich Pearson Correlation Results: Desired relation is negative.", label="tab:corr_res", float_format='%.3f')
+    latex = corr_df.to_latex(caption="Kantarovich Pearson Correlation Results: Desired relation is negative.",
+                             label="tab:corr_res", float_format='%.3f')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')
@@ -417,7 +445,8 @@ if __name__ == '__main__':
     corr_df = pd.DataFrame(corr_rows).set_index('Condition')
     corr_df.columns = [metric_name_short(x) for x in corr_df.columns]
     corr_df = corr_df.sort_index()
-    latex = corr_df.to_latex(caption="Hausdorff Pearson Correlation Results: Desired relation is negative.", label="tab:corr_haus_res", float_format='%.3f')
+    latex = corr_df.to_latex(caption="Hausdorff Pearson Correlation Results: Desired relation is negative.",
+                             label="tab:corr_haus_res", float_format='%.3f')
     latex = latex.replace('\\bottomrule', '')
     latex = latex.replace('\\toprule', '')
     latex = latex.replace('\\midrule', '')

@@ -1,13 +1,13 @@
-import subprocess
-import os
-import sys
-import argparse
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
 import shutil
-import glob
 
 from tasksim.transfer_exp1 import *
 
 BASE_DIR = None
+
 
 def setup_dirs(dim, reward, num, rotate, agents='agent_bases'):
     def dir_exists(path):
@@ -19,7 +19,7 @@ def setup_dirs(dim, reward, num, rotate, agents='agent_bases'):
     else:
         print('Base dir already exists...')
         sys.exit(1)
-    
+
     sub_dirs = {}
     filtered_algos = [algo for algo in ALGO_CHOICES if algo != 'both']
     for method in TRANSFER_METHODS:
@@ -38,6 +38,7 @@ def setup_dirs(dim, reward, num, rotate, agents='agent_bases'):
         sub_dirs[method] = sub_dir
     return sub_dirs
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Base for result directories', default='runner_results')
@@ -45,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=9)
     parser.add_argument('--num', help='Number of source mazes to randomly generate', default=10)
     parser.add_argument('--reward', help='Goal reward', default=1)
-    
+
     args = parser.parse_args()
 
     dim = int(args.dim)

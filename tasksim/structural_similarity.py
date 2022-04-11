@@ -1,29 +1,24 @@
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
+import ctypes
+from enum import Enum
+
 import numpy as np
+import process_chunk as pc
+import ray
+
 import ot
 import ot.lp
-import math
-from time import time as timer
-from sklearn.preprocessing import normalize, minmax_scale
-from enum import Enum
-import ray
-import scipy
-
-from tasksim.utils import emd_c, emd_c_chunk, get_num_cpu, init_ray, get_min_comp
-import process_chunk as pc
-from numba import jit
-from numba.extending import get_cython_function_address
-import ctypes
-from ctypes import CFUNCTYPE, POINTER, c_double, c_int
-import numpy.ctypeslib as npct
-import sys
-
+from tasksim.utils import emd_c, emd_c_chunk, get_num_cpu, get_min_comp
 
 # ----------------------- PARAMETERS ------------------
 
 DEFAULT_CA = 0.5
 DEFAULT_CS = 0.9995
 
-# Use in np.allclose for convergene
+# Use in np.allclose for convergence
 # abs(a[i] - b[i]) <= rtol * abs(b[i]) + atol
 STOP_RTOL = 1e-5
 STOP_ATOL = 1e-8
@@ -32,14 +27,17 @@ MAX_ITERS = 15
 
 DO_NORMALIZE_SCORE = False
 
+
 class RewardStrategy(Enum):
     NOOP = 1
     NORMALIZE_INDEPENDENT = 2
     NORMALIZE_TOGETHER = 3
+
+
 REWARD_STRATEGY = RewardStrategy.NORMALIZE_INDEPENDENT
 
-
 COMPUTE_DISTANCE = False
+
 
 # ----------------------- END PARAMS -------------------
 
@@ -48,6 +46,7 @@ class InitStrategy(Enum):
     ONES = 2
     IDENTITY = 3
     RAND = 4
+
 
 def directed_hausdorff_numpy(delta_a, N_u, N_v):
     """
@@ -61,25 +60,28 @@ def directed_hausdorff_numpy(delta_a, N_u, N_v):
     :param N_v: (list or np.array) Out neighbors (action nodes) of state node v.
     :return: (float) Directed Hausdorff distance.
     """
-    #return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
+    # return delta_a[np.array(N_u)].swapaxes(0, 1)[np.array(N_v)].swapaxes(0, 1).min(axis=1).max()
     # ensure they're already np arrays, then do min along axis 0, instead of swapping and min along axis 1
     # since it's very small (at most 5 action neighbors), use python min/max instead of numpy
     return max([min(x) for x in delta_a[N_u].T[N_v].T])
+
 
 def normalize_score(score, c_a=DEFAULT_CA, c_s=DEFAULT_CS):
     # Represents smallest possible distance metric given c_a, c_s (e.g. 0.15), with actual score of 0.16
     limit = get_min_comp()
     return (score - limit) / (1 - limit)
 
+
 def coallesce_sim(S):
     return S if COMPUTE_DISTANCE else 1 - S
 
-def final_score(S, c_n=1.0, norm=True):
+
+def final_score(S, norm=True):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
-    a = np.array([1/ns for _ in range(ns)])
-    b = np.array([1/nt for _ in range(nt)])
+    a = np.array([1 / ns for _ in range(ns)])
+    b = np.array([1 / nt for _ in range(nt)])
     S = S if COMPUTE_DISTANCE else 1 - S
     score = ot.emd2(a, b, S)
     if DO_NORMALIZE_SCORE:
@@ -87,20 +89,22 @@ def final_score(S, c_n=1.0, norm=True):
     else:
         return score
 
+
 def final_score_song(S):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
-    a = np.array([1/ns for _ in range(ns)])
-    b = np.array([1/nt for _ in range(nt)])
+    a = np.array([1 / ns for _ in range(ns)])
+    b = np.array([1 / nt for _ in range(nt)])
     return ot.emd2(a, b, S)
+
 
 def sim_matrix(S):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
-    a = np.array([1/ns for _ in range(ns)])
-    b = np.array([1/nt for _ in range(nt)])
+    a = np.array([1 / ns for _ in range(ns)])
+    b = np.array([1 / nt for _ in range(nt)])
     S = S if COMPUTE_DISTANCE else 1 - S
     return ot.emd(a, b, S)
 
@@ -109,13 +113,14 @@ def sim_matrix_song(S):
     if isinstance(S, tuple):
         S = S[0]
     ns, nt = S.shape
-    a = np.array([1/ns for _ in range(ns)])
-    b = np.array([1/nt for _ in range(nt)])
+    a = np.array([1 / ns for _ in range(ns)])
+    b = np.array([1 / nt for _ in range(nt)])
     return ot.emd(a, b, S)
 
+
 def truncate_score(score, num_decimal=3):
-    mul = 10**num_decimal
-    return np.trunc(score * mul)/(mul)
+    mul = 10 ** num_decimal
+    return np.trunc(score * mul) / mul
 
 
 def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_maxiters):
@@ -123,13 +128,15 @@ def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_max
     n_chunk2 = chunk.shape[1]
     num_actions1, num_states1 = actions1.shape
     num_actions2, num_states2 = actions2.shape
-    entries = np.zeros(n_chunk1*n_chunk2)
+    entries = np.zeros(n_chunk1 * n_chunk2)
+
     def to_ptr(x):
         return x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+
     emd_c_chunk(n_chunk1, n_chunk2, num_actions1, num_actions2, num_states1, num_states2,
-                          to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(D_s),
-                          to_ptr(entries),
-                          np.float64(c_a), int(emd_maxiters))
+                to_ptr(chunk), to_ptr(reward_diffs), to_ptr(actions1), to_ptr(actions2), to_ptr(D_s),
+                to_ptr(entries),
+                np.float64(c_a), int(emd_maxiters))
     return entries
 
 
@@ -137,7 +144,8 @@ def compute_a_py_full(chunk, reward_diffs, actions1, actions2, D_s, c_a, emd_max
 @ray.remote
 def compute_a(chunk, reward_diffs, actions1, actions2, one_minus_S, c_a, emd_maxiters, handle=pc.compute_chunk):
     return handle(chunk, reward_diffs, actions1, actions2, one_minus_S,
-                            np.float64(c_a), np.float64(emd_maxiters))
+                  np.float64(c_a), np.float64(emd_maxiters))
+
 
 # Returns the state-to-state distances or similarities, taking in the action-action distances
 @ray.remote
@@ -162,7 +170,7 @@ def compute_s(chunk, out_S1, out_S2, one_minus_A, one_minus_A_transpose, c_s, co
                     entry = 0 if compute_distance else c_s
                 else:
                     # Passing in doubles
-                    entry = c_s*np.finfo(np.float64).max if compute_distance else 0
+                    entry = c_s * np.finfo(np.float64).max if compute_distance else 0
             else:
                 haus1 = directed_hausdorff_numpy(one_minus_A, out_S1[u], out_S2[v])
                 haus2 = directed_hausdorff_numpy(one_minus_A_transpose, out_S2[v], out_S1[u])
@@ -198,18 +206,18 @@ def structural_similarity(action_dists, reward_matrix, out_neighbors_S, c_a=DEFA
                                        self_similarity=True)
 
 
-def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1, out_neighbors_S2,
-                                    available_actions1, available_actions2,
-                                     c=DEFAULT_CA, stop_tol=1e-2, max_iters=1e5):
+def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
+                                     out_neighbors_S2, available_actions1, available_actions2, c=DEFAULT_CA,
+                                     max_iters=1e5):
     _, n_states1 = action_dists1.shape
     _, n_states2 = action_dists2.shape
-    #assert n_states1 >= 2 and n_states2 >= 2, f'Min n_states is at least 2; invoked with {n_states1} and {n_states2}'
+    # assert n_states1 >= 2 and n_states2 >= 2, f'Min n_states is at least 2; invoked with {n_states1} and {n_states2}'
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
     d = np.zeros((n_states1, n_states2))
     d_prime = np.zeros((n_states1, n_states2))
-    delta = np.inf
+
     # Paper assumes s' doesn't matter for reward; since our MDPs are stochastic, it does matter;
     # For fair comparison, using same reward function as other metric
     def compute_exp(P, R):
@@ -219,6 +227,7 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
             probs, rewards = P[i], R[i]
             ret[i] = np.dot(probs, rewards)
         return ret
+
     expected_rewards1 = compute_exp(action_dists1, reward_matrix1)
     expected_rewards2 = compute_exp(action_dists2, reward_matrix2)
 
@@ -249,23 +258,24 @@ def cross_structural_similarity_song(action_dists1, action_dists2, reward_matrix
                     P_j_ptr = P_a_j.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
                     d_ptr = d.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
                     d_emd = emd_c(P_i_ptr, P_j_ptr, d_ptr, len(P_a_i), len(P_a_j), int(max_iters))
-                    #d_rwd = cached_reward_differences[a_i, a_j]
                     d_rwd = abs(expected_rewards1[a_i] - expected_rewards2[a_j])
-                    tmp = d_rwd + c*d_emd
+                    tmp = d_rwd + c * d_emd
                     if tmp > 1 and not cross_structural_similarity_song.WARNED:
                         print('WARNING: d_rwd & d_emd combination resulted in value greater than 1')
                         cross_structural_similarity_song.WARNED = True
-                        
+
                     d_prime[s_i, s_j] = max(d_prime[s_i, s_j], tmp)
-        
+
         # Changed from original algorithm to instead use the identical stopping condition as our metric
         if np.allclose(d_prime, d, rtol=STOP_RTOL, atol=STOP_ATOL):
             break
         from copy import deepcopy
         d = deepcopy(d_prime)
-    # num_iters - 1, since returning d bfeore d_prime is copied
     return d, num_iters - 1
+
+
 cross_structural_similarity_song.WARNED = False
+
 
 def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, reward_matrix2, out_neighbors_S1,
                                 out_neighbors_S2, c_a=DEFAULT_CA, c_s=DEFAULT_CS, stop_rtol=STOP_RTOL,
@@ -293,7 +303,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         S = rng.random((n_states1, n_states2))
         A = rng.random((n_actions1, n_actions2))
 
-
     states1 = list(range(n_states1))
     states2 = list(range(n_states2))
 
@@ -308,16 +317,16 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         elif REWARD_STRATEGY == REWARD_STRATEGY.NORMALIZE_INDEPENDENT:
             max_r1 = reward_matrix1.max()
             min_r1 = reward_matrix1.min()
-            reward_matrix1 = (reward_matrix1 - min_r1)/(max_r1 - min_r1)
+            reward_matrix1 = (reward_matrix1 - min_r1) / (max_r1 - min_r1)
             max_r2 = reward_matrix2.max()
             min_r2 = reward_matrix2.min()
-            reward_matrix2 = (reward_matrix2 - min_r2)/(max_r2 - min_r2)
+            reward_matrix2 = (reward_matrix2 - min_r2) / (max_r2 - min_r2)
             return reward_matrix1, reward_matrix2
         else:
             max_r = max(reward_matrix1.max(), reward_matrix2.max())
             min_r = min(reward_matrix1.min(), reward_matrix2.min())
-            reward_matrix1 = (reward_matrix1 - min_r)/(max_r - min_r)
-            reward_matrix2 = (reward_matrix2 - min_r)/(max_r - min_r)
+            reward_matrix1 = (reward_matrix1 - min_r) / (max_r - min_r)
+            reward_matrix2 = (reward_matrix2 - min_r) / (max_r - min_r)
             return reward_matrix1, reward_matrix2
 
     reward_matrix1, reward_matrix2 = norm_rewards(reward_matrix1, reward_matrix2)
@@ -329,14 +338,17 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
             probs, rewards = P[i], R[i]
             ret[i] = np.dot(probs, rewards)
         return ret
+
     expected_rewards1 = compute_exp(action_dists1, reward_matrix1)
     expected_rewards2 = compute_exp(action_dists2, reward_matrix2)
+
     def compute_diff(pos1, pos2):
         diff = np.zeros((len(pos1), len(pos2)))
         for i in range(len(pos1)):
             for j in range(len(pos2)):
                 diff[i][j] = abs(pos1[i] - pos2[j])
         return diff
+
     cached_reward_differences = compute_diff(expected_rewards1, expected_rewards2)
 
     reward_diffs_id = ray.put(cached_reward_differences)
@@ -346,11 +358,13 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
     out_S2_id = ray.put(out_neighbors_S2)
 
     if not self_similarity:
-        action_pairs = np.array([np.float64((i, j)) for i in range(n_actions1) for j in range(n_actions2)]).reshape((n_actions1, n_actions2, 2))
-        state_pairs = np.array([np.float64((i, j)) for i in range(n_states1) for j in range(n_states2)]).reshape((n_states1, n_states2, 2))
+        action_pairs = np.array([np.float64((i, j)) for i in range(n_actions1) for j in range(n_actions2)]).reshape(
+            (n_actions1, n_actions2, 2))
+        state_pairs = np.array([np.float64((i, j)) for i in range(n_states1) for j in range(n_states2)]).reshape(
+            (n_states1, n_states2, 2))
     else:
-        action_pairs = -1*np.ones((n_actions1, n_actions2, 2))
-        state_pairs = -1*np.ones((n_states1, n_states2, 2))
+        action_pairs = -1 * np.ones((n_actions1, n_actions2, 2))
+        state_pairs = -1 * np.ones((n_states1, n_states2, 2))
         for u in states1:
             for v in states2[u + 1:]:
                 state_pairs[u, v, :] = np.float64((u, v))
@@ -372,7 +386,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         bind_compute_a = lambda chunk: compute_a.remote(chunk, reward_diffs_id, actions1_id, actions2_id, D_s_id,
                                                         c_a, emd_maxiters,
                                                         handle=compute_a_py_full)
-        
 
         remoted_a = [bind_compute_a(chunk) for chunk in action_chunks]
         new_A = np.concatenate([ray.get(x) for x in remoted_a]).reshape((n_actions1, n_actions2))
@@ -382,8 +395,6 @@ def cross_structural_similarity(action_dists1, action_dists2, reward_matrix1, re
         if self_similarity:
             i_lower = np.tril_indices(len(A), -1)
             A[i_lower] = A.T[i_lower]
-        
-
 
         D_a = A if COMPUTE_DISTANCE else 1 - A
         D_a_transpose = A.T if COMPUTE_DISTANCE else 1 - A.T

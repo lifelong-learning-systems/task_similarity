@@ -1,14 +1,11 @@
-import subprocess
-import os
-import sys
-import argparse
-import shutil
-import glob
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
 
-from tasksim.transfer_exp1 import *
 from tasksim.create_bases import *
 
 NESTED_DIR = None
+
 
 def setup_dirs(exist_ok=False):
     def dir_exists(path):
@@ -20,7 +17,6 @@ def setup_dirs(exist_ok=False):
     elif not exist_ok:
         print('Base dir already exists...')
         sys.exit(1)
-    
 
     commands = []
     plot_commands = []
@@ -42,6 +38,7 @@ def setup_dirs(exist_ok=False):
 
     return commands, plot_commands
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Nested base', default='nested_results')
@@ -51,7 +48,7 @@ if __name__ == '__main__':
     exist_ok = args.restore
     NESTED_DIR = args.results
 
-    commands, plot_commands  = setup_dirs(exist_ok=exist_ok)
+    commands, plot_commands = setup_dirs(exist_ok=exist_ok)
     print('Running transfer experiments synchronously...')
     for idx, cmd in enumerate(commands):
         print('Running', idx, '/', len(commands))

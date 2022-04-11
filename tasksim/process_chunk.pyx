@@ -1,12 +1,15 @@
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
 import numpy as np
-import ot
+
 import ot.lp
 
-#np.import_array()
 cimport numpy as np
 cimport cython
 
-from libc.stdlib cimport malloc, free
+malloc, free
 
 cdef extern from "EMD.h":
     int EMD_wrap(int n1,int n2, double *X, double *Y,double *D, double *G, double* alpha, double* beta, double *cost, int maxIter) nogil

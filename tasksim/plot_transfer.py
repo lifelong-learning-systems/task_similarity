@@ -1,15 +1,18 @@
-import numpy as np
-from matplotlib import pyplot as plt
-import glob
-import ast
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
 import argparse
-import tasksim
-import tasksim.structural_similarity as sim
+import ast
+import glob
 import pickle
-import dill
-import ot
 import sys
 
+import dill
+import numpy as np
+from matplotlib import pyplot as plt
+
+import tasksim.structural_similarity as sim
 from tasksim.qtrainer import QTrainer
 
 N_CHUNKS = 40
@@ -28,7 +31,10 @@ def get_completed(steps, measure_iters, key=None):
         summed = np.cumsum(steps)
         get_completed.cache[key] = summed
     return np.searchsorted(summed, measure_iters)
+
+
 get_completed.cache = {}
+
 
 def get_completed_list(steps, boundaries, key=None):
     if key is None:
@@ -38,7 +44,7 @@ def get_completed_list(steps, boundaries, key=None):
     else:
         summed = np.cumsum(steps)
         get_completed.cache[key] = summed
-    
+
     completed = np.zeros(len(boundaries))
     num_completed = 0
     cur_idx = 0
@@ -61,6 +67,7 @@ def get_completed_list(steps, boundaries, key=None):
             completed[b_idx] = num_completed
     return completed
 
+
 def get_all_completed(raw_steps, measure_iters):
     ret = {}
     for metric, data in raw_steps.items():
@@ -71,8 +78,8 @@ def get_all_completed(raw_steps, measure_iters):
         ret[metric] = np.array(completed)
     return ret
 
-def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
 
+def get_performance_curves(raw_steps, measure_iters, chunks=N_CHUNKS):
     get_completed.cache = {}
     boundaries = np.linspace(0, measure_iters, chunks)
 
@@ -120,7 +127,7 @@ def process():
         data_file = f.replace('res.txt', 'data.pkl')
         with open(data_file, 'rb') as ptr:
             data = pickle.load(ptr)
-        
+
         last_token = f.split('/')[-1]
         envs_file = f.replace(last_token, 'all_envs.dill')
         with open(envs_file, 'rb') as ptr:
@@ -143,12 +150,14 @@ def process():
             states2 = np.arange(nt)
             optimal_lens.append(optimal_len)
             if USE_HAUS:
-                haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
+                haus = max(sim.directed_hausdorff_numpy(D, states1, states2),
+                           sim.directed_hausdorff_numpy(D.T, states2, states1))
                 scores.append(haus)
             else:
                 dist_score = sim.final_score_song(D)
                 scores.append(dist_score)
-            haus = max(sim.directed_hausdorff_numpy(D, states1, states2), sim.directed_hausdorff_numpy(D.T, states2, states1))
+            haus = max(sim.directed_hausdorff_numpy(D, states1, states2),
+                       sim.directed_hausdorff_numpy(D.T, states2, states1))
             haus_scores.append(haus)
 
         def process_line(line):
@@ -158,6 +167,7 @@ def process():
                 tokens = line.split(', ')
                 return np.array([float(token) for token in tokens])
             return np.array([])
+
         scores = np.array(scores)
         haus_scores = np.array(haus_scores)
         dists = scores
@@ -165,14 +175,13 @@ def process():
         optimal = np.array(optimal_lens)
         optimals[key] = optimal
 
-
         tokens = lines[0].split(' ')
         num_source, n_trials = int(tokens[0]), int(tokens[1])
         raw_steps[key] = {}
         for i in range(num_source):
             raw_steps[key][i] = []
             for k in range(n_trials):
-                raw_steps[key][i].append(process_line(lines[1 + i*n_trials + k]))
+                raw_steps[key][i].append(process_line(lines[1 + i * n_trials + k]))
 
         if key == 'new_dist_normalize'.title():
             continue
@@ -194,8 +203,8 @@ def process():
 
     plt.clf()
 
-    DIFF = False    
-    Y_HEIGHT = Y_HEIGHT/(N_CHUNKS if DIFF else 1)
+    DIFF = False
+    Y_HEIGHT = Y_HEIGHT / (N_CHUNKS if DIFF else 1)
     all_perfs, avg_perfs = get_performance_curves(raw_steps, PERF_ITER, N_CHUNKS)
     N_SOURCES = None
     n_sources_list = []
@@ -231,7 +240,8 @@ if __name__ == '__main__':
     global RESULTS_DIR
     global OUT
     parser = argparse.ArgumentParser()
-    parser.add_argument('--results', help='Which directory to read from', default='final_results/dim9_reward100_num10_weight')
+    parser.add_argument('--results', help='Which directory to read from',
+                        default='final_results/dim9_reward100_num10_weight')
     parser.add_argument('--parent', help='Which nested result dir to read from', default=None)
     args = parser.parse_args()
     parent_dir = args.parent
@@ -298,7 +308,7 @@ if __name__ == '__main__':
         plt.title(f'Performance: {main_key.title()} transfer w/ Reward {reward}, Dim {dim}, N={N_SOURCES}{rot_str}')
         plt.legend()
         plt.savefig(f'{OUT}/{main_key}_performance.png', dpi=DPI)
-        final_perfs_avg = {key:perf[-1] for key, perf in avg_perfs.items()}
+        final_perfs_avg = {key: perf[-1] for key, perf in avg_perfs.items()}
         all_perfs = full_results_all[main_key]
         final_perfs = {key: {idx: perf[-1] for idx, perf in perf_dict.items()} for key, perf_dict in all_perfs.items()}
         scores = full_scores[main_key]
@@ -318,4 +328,3 @@ if __name__ == '__main__':
         with open(final_out, 'wb') as f:
             dill.dump(final_data, f)
     plt.clf()
-

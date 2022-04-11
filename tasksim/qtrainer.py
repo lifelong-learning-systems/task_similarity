@@ -1,25 +1,24 @@
-from numpy.core.fromnumeric import var
-from numpy.lib.function_base import average
-from numpy.lib.npyio import save
-import tasksim.gridworld_generator as gen
-from tasksim.environment import MDPGraphEnv
-import random
-import numpy as np
-import tasksim.structural_similarity as sim
-import matplotlib.pyplot as plt
-import time
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
 import json
-from os import path
-from statistics import mean
-import seaborn as sns
-import argparse
+import random
 from collections import deque
+from os import path
+
+import numpy as np
 from tqdm import tqdm
 
-#Reference https://medium.com/swlh/introduction-to-q-learning-with-openai-gym-2d794da10f3d
+import tasksim.gridworld_generator as gen
+from tasksim.environment import MDPGraphEnv
+
+
+# Reference https://medium.com/swlh/introduction-to-q-learning-with-openai-gym-2d794da10f3d
 class QTrainer:
-    
-    def __init__(self, env: MDPGraphEnv, agent_path=None, save=True, override_hyperparameters = False, learning=True, lr=0.01, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=1e-6):
+
+    def __init__(self, env: MDPGraphEnv, agent_path=None, save=True, override_hyperparameters=False, learning=True,
+                 lr=0.01, gamma=0.95, epsilon=1.0, min_epsilon=0.01, max_epsilon=1.0, decay=1e-6):
         """
         QTrainer trains q agent 
 
@@ -28,22 +27,22 @@ class QTrainer:
         :param override_hyperparameters: change hyperparameters of existing agent
         :learning: enable epsilon greedy choice and update q table 
         """
-        
+
         self.env = env
         self.num_states = env.graph.P.shape[1]
-        
-        self.Q = None #Q table
-        self.learning = learning 
+
+        self.Q = None  # Q table
+        self.learning = learning
         self.agent_path = agent_path
 
         if agent_path == None:
             save = False
-        self.save = save  
+        self.save = save
 
         json_exists = False if agent_path is None else path.exists(agent_path)
 
         if json_exists:
-            self._load_table(agent_path)    
+            self._load_table(agent_path)
         else:
             self._create_table()
             override_hyperparameters = True
@@ -58,15 +57,14 @@ class QTrainer:
             self.episode = 0
             self.rewards = []
             self.steps = []
-        
+
         self.total_rewards = 0
 
     def _load_table(self, path):
 
         with open(path, 'r') as file:
-            
             obj = json.loads(file.read())
-            
+
             self.lr = obj['lr']
             self.gamma = obj['gamma']
             self.epsilon = obj['epsilon']
@@ -79,19 +77,18 @@ class QTrainer:
             self.episode = obj['episode']
 
             assert len(self.Q) == self.num_states, 'error: Qtable statespace mismatch'
-            
 
     def _create_table(self):
         self.Q = np.zeros((self.num_states, 4))
-        
+
     def reset(self, center=False):
         self.episode += 1
         return self.env.reset(center=False)
 
-    #step using Q table or provided action
+    # step using Q table or provided action
     def step(self, action=None, center=False):
-        
-        if(action == None):
+
+        if (action == None):
             action = self._choose_action()
 
         old_grid_state = self.env.state
@@ -106,17 +103,18 @@ class QTrainer:
         reward = self.env.graph.R[graph_action][new_mdp_state]
 
         if self.learning:
-            self.Q[old_mdp_state, action] = self.Q[old_mdp_state, action]+self.lr*(reward+self.gamma*np.max(self.Q[new_mdp_state, :])-self.Q[old_mdp_state, action])
+            self.Q[old_mdp_state, action] = self.Q[old_mdp_state, action] + self.lr * (
+                        reward + self.gamma * np.max(self.Q[new_mdp_state, :]) - self.Q[old_mdp_state, action])
             self.epsilon = max(self.min_epsilon, self.epsilon - self.decay)
-            
+
         row, col = self.env.row_col(new_grid_state)
         done = self.env.grid[row, col] == 2
-            
+
         return self.env.gen_obs(center=center), reward, done, {}
 
-    #choose an acation based on epsilon greedy choice    
+    # choose an action based on epsilon greedy choice
     def _choose_action(self):
-        
+
         prob_random = random.uniform(0, 1)
 
         if not self.learning or prob_random > self.epsilon:
@@ -125,57 +123,56 @@ class QTrainer:
             action = np.argmax(self.Q[mdp_state, :])
         else:
             action = self.env.action_space.sample()
-        
+
         return action
 
     def compute_action(self, _):
         return self._choose_action()
 
-    def run(self, num_iters=7500, episodic=True, early_stopping=False, threshold=.8, threshold_N=20, record=False, max_eps=None):
-        
+    def run(self, num_iters=7500, episodic=True, early_stopping=False, threshold=.8, threshold_N=20, max_eps=None):
+
         total_episode = 0
         total_step = 0
         performance = 0
         episodes = list(range(num_iters))
         steps = list(range(num_iters))
-        
-        tmp_optimal = self.compute_optimal_path(self.env.fixed_start) if early_stopping and self.env.fixed_start is not None else None
+
+        tmp_optimal = self.compute_optimal_path(
+            self.env.fixed_start) if early_stopping and self.env.fixed_start is not None else None
         if tmp_optimal is not None:
             optimal = tmp_optimal[0]
         else:
             optimal = None
 
-        if episodic:    
+        if episodic:
             for _ in tqdm(episodes, desc='Q_training(episodic)'):
-            
+
                 self.total_rewards = 0
-                obs = self.env.reset()
+                self.env.reset()
                 done = False
                 step = 0
-                
+
                 while not done and step < 1e6:
                     obs, reward, done, _ = self.step()
                     self.total_rewards += reward
                     step += 1
                     total_step += 1
-                
+
                 total_episode += 1
 
-                if optimal is not None: 
+                if optimal is not None:
                     performance = optimal / step
                     if performance >= threshold:
                         if self.save:
                             self.save_table()
                         return total_episode, total_step, performance
-                    
 
                 self.rewards.append(self.total_rewards)
                 self.steps.append(step)
 
-        elif not episodic:
+        else:
             self.total_rewards = 0
-            obs = self.env.reset()
-            done = False
+            self.env.reset()
             step = 0
             for _ in steps:
                 obs, reward, done, _ = self.step()
@@ -184,8 +181,7 @@ class QTrainer:
                 total_step += 1
 
                 if done:
-                    obs = self.env.reset()
-                    done = False
+                    self.env.reset()
                     self.rewards.append(self.total_rewards)
                     self.steps.append(step)
 
@@ -195,7 +191,7 @@ class QTrainer:
                         avg_perf = np.array(self.steps[-threshold_N:]).mean()
                         if optimal is not None:
                             if total_episode % 1000 == 0:
-                                print(f'\tAvg perf percent: {optimal/avg_perf}')
+                                print(f'\tAvg perf percent: {optimal / avg_perf}')
                             performance = optimal / avg_perf
                             if performance >= threshold:
                                 if self.save:
@@ -208,24 +204,15 @@ class QTrainer:
 
         if self.save:
             self.save_table()
-        
-        return total_episode, total_step, performance 
 
+        return total_episode, total_step, performance
 
     def save_table(self):
 
         with open(self.agent_path, 'w') as outfile:
-            data = {}
-            data['lr'] = self.lr
-            data['gamma'] = self.gamma
-            data['epsilon'] = self.epsilon
-            data['min_epsilon'] = self.min_epsilon
-            data['max_epsilon'] = self.max_epsilon
-            data['decay'] = self.decay
-            data['Q'] = self.Q.tolist()
-            data['rewards'] = self.rewards
-            data['steps'] = self.steps
-            data['episode'] = self.episode
+            data = {'lr': self.lr, 'gamma': self.gamma, 'epsilon': self.epsilon, 'min_epsilon': self.min_epsilon,
+                    'max_epsilon': self.max_epsilon, 'decay': self.decay, 'Q': self.Q.tolist(), 'rewards': self.rewards,
+                    'steps': self.steps, 'episode': self.episode}
             json.dump(data, outfile)
 
     def compute_optimal_path(self, grid_state):
@@ -233,7 +220,7 @@ class QTrainer:
         grid = graph.grid
         width = grid.shape[1]
         strat = graph.strat
-        q = deque() 
+        q = deque()
 
         q.append((grid_state, []))
         found = None
@@ -264,7 +251,7 @@ class QTrainer:
                     continue
                 action = out_actions[id]
                 row = f // width
-                col = f - width*row
+                col = f - width * row
                 next_path = [c for c in cur_path]
                 next_path.append((cur_grid_state, action))
                 if grid[row, col] == 2:
@@ -278,4 +265,3 @@ class QTrainer:
             return None, None
         _, goal_path = found
         return len(goal_path), goal_path
-
