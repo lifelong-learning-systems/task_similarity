@@ -116,5 +116,5 @@ cdef api emd_c_pure_chunk(int chunk_n1, int chunk_n2,
             x = &actions1[num_states1*alpha]
             y = &actions2[num_states2*beta]
             d_emd = emd_c_pure(<double*>x, <double*>y, <double*>one_minus_S, num_states1, num_states2, emd_maxiters)
-            entry = 1 - (1 - c_a) * d_rwd - c_a * d_emd
+            entry = (1 - c_a) * d_rwd + c_a * d_emd
             entries[count] = entry

@@ -45,9 +45,16 @@ setup(
         'numba',
         'ray',
         'ray[default]',
-        'gym',
+        'gym==0.21',
         'torch',
-        'ray[rllib]'
+        'ray[rllib]',
+        'tqdm',
+        'seaborn',
+        'dill',
+        'tabulate',
+        'dm-tree',
+        'scikit-image',
+        'pingouin'
     ],
     zip_safe=False,
 )

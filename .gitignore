@@ -9,3 +9,9 @@ build/
 **/*.so
 **/*_api.h
 **/*.DS_Store
+
+tasksim/results_transfer
+tasksim/cached_results
+tasksim/nested_results
+tasksim/agent_bases
+
