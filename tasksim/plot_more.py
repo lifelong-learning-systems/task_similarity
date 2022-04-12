@@ -33,17 +33,21 @@ def metric_name(x, method):
     else:
         ret = 'SS2'
         action=True
-    action_str = ' + Action' if action else ''
-    ret += f', {method.title()}{action_str}'
+    if method == 'weight':
+        method = 'T-AVG'
+    else:
+        method = 'T-STATE'
+    action_str = '-ACT' if action else ''
+    ret += f', {method}{action_str}'
     return ret
 
 def name_to_metric_method(name):
-    method = 'weight' if 'W' in name else 'state'
+    method = 'weight' if 'AVG' in name else 'state'
     if 'Song' in name:
         return 'Song', method
     elif 'Uniform' in name:
         return 'Uniform', method
-    elif 'A' in name:
+    elif 'ACT' in name:
         return 'New_Action', method
     else:
         return 'New', method
@@ -51,13 +55,13 @@ def name_to_metric_method(name):
 def metric_name_short(metric_name):
     metric, method = metric_name.split(', ')
     method_str = ', '
-    if 'State' in method:
-        method_str += 'S'
+    if 'STATE' in method:
+        method_str += 'STATE'
     else:
-        method_str += 'W'
+        method_str += 'AVG'
     
-    if 'Action' in method:
-        method_str += ' + A'
+    if 'ACT' in method:
+        method_str += '-ACT'
     return f'{metric}{method_str}'
 
 
@@ -222,12 +226,16 @@ if __name__ == '__main__':
         def filter_func(x):
             if main_key != 'best':
                 ret = x[x.Method == main_key]
-                ret['Algorithm'] = ret['Algorithm'].str.split(',').str[0]
             else:
                 ret = best_methods
             return ret
 
-        title_str = f', {main_key.title()} Transfer'
+        if main_key == 'best':
+            title_str = f', Best Transfer Methods for Each Metric'
+        elif main_key == 'weight':
+            title_str = ', T-AVG Transfer Methods'
+        else:
+            title_str = ', T-STATE Transfer Methods'
         out_str = f'{main_key}_'
         plot_bar(df, 'Condition', 'Algorithm', 'Median Performance', title = f'Median {title_base}{title_str}',\
                  out=out_str+'median', filter=filter_func)
@@ -238,9 +246,9 @@ if __name__ == '__main__':
         plot_bar(df, 'Condition', 'Algorithm', 'Med. Relative Performance %', title = f'Median {rel_title_base}{title_str}',\
                  out=out_str+'med_relative', filter=filter_func)
 
-        dist_plot = main_key == 'best'
+        #dist_plot = main_key == 'best'
+        dist_plot = True
         subplot_cols = ['Dimension', 'Rotate']
-        title_str += ' Method for Each Metric'
         if dist_plot:
             plot_dist(df, 'Algorithm', 'Episodes Completed', subplot_cols, title=f'{title_base}{title_str}', out=out_str.replace('_', ''), filter=filter_func)
             plot_dist(df, 'Algorithm', 'Relative Performance', subplot_cols, title=f'{rel_title_base}{title_str}', out=out_str+'relative', filter=filter_func)
