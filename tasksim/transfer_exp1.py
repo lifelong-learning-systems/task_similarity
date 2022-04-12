@@ -32,9 +32,6 @@ NEW_ALGOS = ['new']
 TRANSFER_METHODS = ['weight', 'weight_action',
                     'state', 'state_action']
 
-SCORE_METHODS = ['emd', 'haus']
-
-
 def init_algo(metric):
     if metric == 'new':
         sim.REWARD_STRATEGY = sim.RewardStrategy.NORMALIZE_INDEPENDENT
@@ -264,7 +261,7 @@ def perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward, tra
             optimal.append(optimal_len)
             continue
 
-        trainer.run(num_iters=num_iters, episodic=False, early_stopping=True, threshold=threshold, record=True)
+        trainer.run(num_iters=num_iters, episodic=False, early_stopping=True, threshold=threshold)
         num_eps = len(trainer.steps)
         if num_eps < min_eps:
             print(f'Training failure, {num_eps} episodes completed. Continuing with more training...')
@@ -379,7 +376,6 @@ if __name__ == '__main__':
     parser.add_argument('--results', help='Result directory', default='results_transfer')
     parser.add_argument('--transfer', help='Which transfer method to use', choices=TRANSFER_METHODS,
                         default=TRANSFER_METHODS[0])
-    parser.add_argument('--score', help='Which scoring method to use', choices=SCORE_METHODS, default=SCORE_METHODS[0])
     parser.add_argument('--seed', help='Specifies seed for the RNG', default=3257823)
     parser.add_argument('--rotate', help='If true, randomly orient the start/goal locations', action='store_true')
     parser.add_argument('--dim', help='Side length of mazes, for RNG', default=13)
@@ -405,14 +401,13 @@ if __name__ == '__main__':
     reward = float(args.reward)
     results = args.results
     transfer_method = args.transfer
-    score_method = args.score
     notransfer = args.notransfer
     RESULTS_DIR = results
 
     ARG_DICT = vars(args)
 
     bound = lambda metric: perform_exp(metric, dim, prob, num_mazes, rotate, seed, obs_max, reward,
-                                       transfer_method, score_method, restore=restore, notransfer=notransfer)
+                                       transfer_method, restore=restore, notransfer=notransfer)
     if metric == 'both':
         waiting = []
         for metric in ALGO_CHOICES:
