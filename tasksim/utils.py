@@ -1,22 +1,27 @@
-import ray
-import psutil
-
-from numba.extending import get_cython_function_address
-import ctypes
-from ctypes import CFUNCTYPE, POINTER, c_double, c_int
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
 
 import logging
+from ctypes import CFUNCTYPE, POINTER, c_double, c_int
+
+import psutil
+import ray
+from numba.extending import get_cython_function_address
+
 
 def get_emd_c_chunk():
     emd_c_chunk_name = 'emd_c_pure_chunk'
     emd_c_chunk_addr = get_cython_function_address('process_chunk', emd_c_chunk_name)
     emd_c_chunk_prototype = CFUNCTYPE(None,
-                                    c_int, c_int, c_int, c_int, c_int, c_int,
-                                    POINTER(c_double), POINTER(c_double), POINTER(c_double), POINTER(c_double), POINTER(c_double),
-                                    POINTER(c_double),
-                                    c_double, c_int)
+                                      c_int, c_int, c_int, c_int, c_int, c_int,
+                                      POINTER(c_double), POINTER(c_double), POINTER(c_double), POINTER(c_double),
+                                      POINTER(c_double),
+                                      POINTER(c_double),
+                                      c_double, c_int)
     emd_c_chunk = emd_c_chunk_prototype(emd_c_chunk_addr)
     return emd_c_chunk
+
 
 def get_emd_c():
     emd_c_name = 'emd_c_pure'
@@ -25,12 +30,15 @@ def get_emd_c():
     emd_c = emd_c_prototype(emd_c_addr)
     return emd_c
 
+
 emd_c = get_emd_c()
 emd_c_chunk = get_emd_c_chunk()
 
 NUM_CPU = None
 RAY_INFO = None
 MIN_COMP = None
+
+
 def init_ray():
     global NUM_CPU
     global RAY_INFO
@@ -57,11 +65,13 @@ def init_ray():
     if DEBUG_PRINT:
         print(f'TaskSim: Ray initialization complete! Min score is {MIN_COMP}')
 
+
 def get_num_cpu():
     while NUM_CPU is None:
         print('TaskSim: attempting to invoke without Ray initialized...')
         init_ray()
     return NUM_CPU
+
 
 def get_min_comp():
     while MIN_COMP is None:

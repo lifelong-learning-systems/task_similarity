@@ -1,9 +1,6 @@
-import subprocess
-import os
-import sys
-import argparse
-import shutil
-import glob
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
 
 from tasksim.transfer_exp1 import *
 
@@ -12,6 +9,7 @@ DIMS = [9, 13]
 N = 100
 ROTS = [True, False]
 REWARDS = [1, 100]
+
 
 def setup_dirs(exist_ok=False):
     def dir_exists(path):
@@ -23,7 +21,6 @@ def setup_dirs(exist_ok=False):
     elif not exist_ok:
         print('Base dir already exists...')
         sys.exit(1)
-    
 
     initial_algo = 'new'
     filtered_algos = [algo for algo in ALGO_CHOICES if algo != 'both' and algo != initial_algo]
@@ -48,6 +45,7 @@ def setup_dirs(exist_ok=False):
 
     return stage1, stage2
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--results', help='Base for agent bases', default='agent_bases')
@@ -67,7 +65,7 @@ if __name__ == '__main__':
         waiting1.append(p)
     for p in waiting1:
         p.wait()
-    
+
     waiting2 = []
     print('Launching Stage 2...')
     for cmd in stage2:
