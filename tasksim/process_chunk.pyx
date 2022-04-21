@@ -9,7 +9,7 @@ import ot.lp
 cimport numpy as np
 cimport cython
 
-malloc, free
+from libc.stdlib cimport malloc, free
 
 cdef extern from "EMD.h":
     int EMD_wrap(int n1,int n2, double *X, double *Y,double *D, double *G, double* alpha, double* beta, double *cost, int maxIter) nogil
