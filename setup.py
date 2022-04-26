@@ -1,13 +1,16 @@
-from setuptools import setup, Extension
-from Cython.Build import cythonize
+# Copyright 2022, The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Distributed under the terms of the BSD 3-Clause License.
+
+import os
+import subprocess
+import sys
 
 import numpy as np
-import os
-import ot
-import ot.lp
+from Cython.Build import cythonize
+from setuptools import setup, Extension
 
-import sys
-import subprocess
+import ot.lp
 
 compile_args = ['-O3']
 if sys.platform.startswith('darwin'):
@@ -54,7 +57,8 @@ setup(
         'tabulate',
         'dm-tree',
         'scikit-image',
-        'pingouin'
+        'pingouin',
+        'tqdm'
     ],
     zip_safe=False,
 )

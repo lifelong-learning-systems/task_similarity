@@ -2,6 +2,8 @@
 
 ## Install
 
+**Note: this has not been tested on Windows OS**
+
 - First create a venv, using Python 3.8:
     - `python -m venv venv-task-sim`
     - `source venv-task-sim/bin/activate`
