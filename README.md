@@ -1,4 +1,4 @@
-![APL Logo](_assets/apl_small_horizontal_blue.png)
+<img src="./_assets/apl_small_horizontal_blue.png" width="600" />
 
 # Structural Similarity for Two MDPs (SS2)
 
@@ -19,7 +19,7 @@ satisfies the properties of a metric for state-to-state and action-to-action com
 
 ## Install
 
-**Note: this has not been tested on Windows OS**
+**Note: This code has only been tested on macOS**
 
 - First create a venv, using Python 3.8:
     - `python -m venv venv-task-sim`
@@ -38,27 +38,30 @@ satisfies the properties of a metric for state-to-state and action-to-action com
 - Additionally install `"ray[default]"`:
     - `pip install "ray[default]`
 - If on Mac, may need to configure a signing identity to allow connections:
-    - Follow instructions [here](https://stackoverflow.com/questions/19688841/add-python-application-to-accept-incoming-network-connections/21052159#21052159)
+    - Follow instructions[here](https://stackoverflow.com/questions/19688841/add-python-application-to-accept-incoming-network-connections/21052159#21052159)
         1. create signing identity
         2. with venv activated, run:
            - `codesign -s "My Signing Identity" -f $(which python)`
 
 
-## Transfer Experimnents
+## Transfer Experiments
 - In the `tasksim` folder:
 - Setup via the `create_bases.py` command.
     - Run as `python create_bases.py --restore --results agent_bases`
     - Using the `restore` flag allows future invocation to add to what was left off, if it was interrupted
     - End the session at any time by doing `killall Python; killall python` in a separate session
     - This will create the base agents for all the environment variations, as well as store the grid 
-      information and distance matrices for the relavant metrics.
+      information and distance matrices for the relevant metrics.
 - Afterwards, use the `all_transfer.py` script to kick off the transfer experiments
     - Run as `python all_transfer.py --results nested_results --restore`
     - This copies over the information from the `agent_bases` folder into new experiment folders, for all the
       transfer methods, then runs the experiments and creates the charts for each
 - Finally, invoke the `plot_more.py` script to get the final graphs and output tables
     - `python plot_more.py --results nested_results`
-
+    - This should include the following
+        - <img src="./_assets/curves_best_transfer.png" width="300" />
+        - <img src="./_assets/dist_state_relative_transfer.png" width="300" />
+        - <img src="./_assets/dist_weight_relative_transfer.png" width="300" />
 
 ## Other Usage
 
