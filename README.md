@@ -1,4 +1,21 @@
-# A repository for Task Similarity reserach under L2M
+![APL Logo](_assets/apl_small_horizontal_blue.png)
+
+# Structural Similarity for Two MDPs (SS2)
+
+This Python module is the companion software for the Structural Similarity for Two MDPs (SS2)
+Task similarity estimation described in "Structural Similarity for Improved Transfer 
+in Reinforcement Learning." It consists of an implementation of the SS2 algorithm, with 
+examples of how to represent the MDP inputs, code for generating gridworld navigation
+tasks, and the code used run the experiments presented in the aforementioned paper. 
+
+Assuming two finite Markov Decision Processes (MDPs), SS2 computes a distance, or similarity
+measure, between each state in each MDP and every other state in both MDPs. It does this by
+defining a graph structure of each MDP, where states and actions are nodes in the graph and
+transition probabilities and rewards constitute the edges, and then iteratively computing
+node-to-node similarity using Earth Mover's Distance (EMD) and the Hausdorff distance; 
+please see the full paper for details. The result is a distance measure that provably
+satisfies the properties of a metric for state-to-state and action-to-action comparisons. 
+
 
 ## Install
 
@@ -56,3 +73,17 @@
     - You can also initialize ray explicitly, via:
         - `tasksim.init_ray()`
         - If not used, then `init_ray()` will be invoked when it is lazily first needed
+
+
+### License
+
+This software is released open source under the [BSD 3-Clause License](LICENSE). 
+
+### Acknowledgements
+
+This work was funded by the DARPA Lifelong Learning 
+Machines (L2M) Program. The views, opinions,
+and/or findings expressed are those of the author(s) and
+should not be interpreted as representing the official
+views or policies of the Department of Defense or the
+U.S. Government.
