@@ -1,4 +1,4 @@
-<img src="./_assets/apl_small_horizontal_blue.png" width="600" />
+<img src="./_assets/apl_small_horizontal_blue.png"/>
 
 # Structural Similarity for Two MDPs (SS2)
 
